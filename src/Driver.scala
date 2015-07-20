@@ -27,7 +27,7 @@ object Driver {
     val data = lines.map(line => line.split(",")).map(arr => arr.map(_.toDouble))
       .map(arr => new LabeledPoint(arr(784), Vectors.dense(arr.slice(0, 784))))
 
-    cnn.train(data, 10)
+    cnn.train(data, 100)
 
     //预测
     // CNN cnn = CNN.loadModel(modelName);

@@ -8,24 +8,7 @@ import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, kron}
 object Util {
 
   def randomMatrix(row: Int, col: Int): BDM[Double] = {
-    val r = new Random(7)
-    val m = BDM.zeros[Double](row, col)
-    var i: Int = 0
-    while (i < row) {
-      {
-        {
-          var j: Int = 0
-          while (j < col) {
-            {
-              m(i, j) = (r.nextDouble - 0.05) / 10
-            }
-            j += 1
-          }
-        }
-      }
-      i += 1
-    }
-    m
+    (BDM.rand[Double](row, col) - 0.05) / 10.0
   }
 
   /**

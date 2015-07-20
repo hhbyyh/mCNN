@@ -67,9 +67,7 @@ class CNN extends Serializable {
           count += 1
           Layer.prepareForNewRecord
         })
-
         updateParas
-        println("epochsNum" + i)
         i += 1
       }
       val p = 1.0 * right / count
@@ -333,15 +331,14 @@ class CNN extends Serializable {
     val inputLayer: Layer = layers.get(0)
     val mapSize: Size = inputLayer.getMapSize
     val attr = record
-    if (attr.size != mapSize.x * mapSize.y) throw new RuntimeException("数据记录的大小与定义的map大小不一致!")
+    if (attr.size != mapSize.x * mapSize.y)
+      throw new RuntimeException("数据记录的大小与定义的map大小不一致!")
 
     var i: Int = 0
     while (i < mapSize.x) {
       var j: Int = 0
       while (j < mapSize.y) {
-        {
-          inputLayer.setMapValue(0, i, j, attr(mapSize.x * i + j))
-        }
+        inputLayer.setMapValue(0, i, j, attr(mapSize.x * i + j))
         j += 1
       }
       i += 1
