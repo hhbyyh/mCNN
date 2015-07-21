@@ -140,19 +140,19 @@ class CNN extends Serializable {
   }
 
 
-  def predict(testset: RDD[Vector]): RDD[Int] = {
-    testset.map(record => {
-      forward(record)
-      val outputLayer = layers.get(layerNum - 1)
-      val mapNum = outputLayer.outMapNum
-      val out = new Array[Double](mapNum)
-      for (m <- 0 until mapNum) {
-        val outmap = outputLayer.getMap(m)
-        out(m) = outmap(0, 0)
-      }
-      Util.getMaxIndex(out)
-    })
-  }
+//  def predict(testset: RDD[Vector]): RDD[Int] = {
+//    testset.map(record => {
+//      forward(record)
+//      val outputLayer = layers.get(layerNum - 1)
+//      val mapNum = outputLayer.outMapNum
+//      val out = new Array[Double](mapNum)
+//      for (m <- 0 until mapNum) {
+//        val outmap = outputLayer.getMap(m)
+//        out(m) = outmap(0, 0)
+//      }
+//      Util.getMaxIndex(out)
+//    })
+//  }
 
   private def train(record: LabeledPoint): (Boolean, Array[(Array[Array[BDM[Double]]], Array[Double])]) = {
     val outputs = forward(record.features)
@@ -403,11 +403,11 @@ class CNN extends Serializable {
       outputs(l) =
         layer.getType match {
           case "conv" =>
-            setConvOutput(layer, lastLayer)
+            setConvOutput(layer, outputs(l - 1))
           case "samp" =>
-            setSampOutput(layer, lastLayer)
+            setSampOutput(layer, outputs(l - 1))
           case "output" =>
-            setConvOutput(layer, lastLayer)
+            setConvOutput(layer, outputs(l - 1))
           case _ => null
         }
       l += 1
@@ -441,16 +441,16 @@ class CNN extends Serializable {
     return Array(m)
   }
 
-  private def setConvOutput(layer: Layer, lastLayer: Layer): Array[BDM[Double]] = {
+  private def setConvOutput(layer: Layer, outputs: Array[BDM[Double]]): Array[BDM[Double]] = {
     val mapNum: Int = layer.outMapNum
-    val lastMapNum: Int = lastLayer.outMapNum
+    val lastMapNum: Int = outputs.length
     val output = new Array[BDM[Double]](mapNum)
     var j = 0
     while (j < mapNum) {
       var sum: BDM[Double] = null // 对每一个输入map的卷积进行求和
       var i = 0
       while (i < lastMapNum) {
-        val lastMap = lastLayer.getMap(i)
+        val lastMap = outputs(i)
         val kernel = layer.getKernel(i, j)
         if (sum == null)
           sum = Util.convnValid(lastMap, kernel)
@@ -471,14 +471,13 @@ class CNN extends Serializable {
    * 设置采样层的输出值，采样层是对卷积层的均值处理
    *
    * @param layer
-   * @param lastLayer
    */
-  private def setSampOutput(layer: Layer, lastLayer: Layer): Array[BDM[Double]] = {
-    val lastMapNum: Int = lastLayer.outMapNum
+  private def setSampOutput(layer: Layer, outputs: Array[BDM[Double]]): Array[BDM[Double]] = {
+    val lastMapNum: Int = outputs.length
     val output = new Array[BDM[Double]](lastMapNum)
     var i: Int = 0
     while (i < lastMapNum) {
-      val lastMap: BDM[Double] = lastLayer.getMap(i)
+      val lastMap: BDM[Double] = outputs(i)
       val scaleSize: Size = layer.getScaleSize
       val sampMatrix: BDM[Double] = Util.scaleMatrix(lastMap, scaleSize)
       layer.setMapValue(i, sampMatrix)
