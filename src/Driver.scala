@@ -27,15 +27,17 @@ object Driver {
     val data = lines.map(line => line.split(",")).map(arr => arr.map(_.toDouble))
       .map(arr => new LabeledPoint(arr(784), Vectors.dense(arr.slice(0, 784))))
 
-    cnn.train(data, 100)
+    val start = System.nanoTime()
+    cnn.train(data, 5)
+    println("Training time: " + (System.nanoTime() - start) / 1e9 )
 
     //预测
     // CNN cnn = CNN.loadModel(modelName);
     val testLines = sc.textFile("dataset/test.predict")
     val testdata = testLines.map(line => line.split(",")).map(arr => arr.map(_.toDouble))
       .map(arr => Vectors.dense(arr))
-    val result = cnn.predict(testdata)
-    println(result.collect().mkString("\n"))
+//    val result = cnn.predict(testdata)
+//    println(result.collect().mkString("\n"))
   }
 
 }

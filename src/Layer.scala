@@ -7,7 +7,7 @@ import breeze.stats.distributions.{Gamma, RandBasis}
 
 
 object Layer {
-  private var recordInBatch: Int = 0
+  var recordInBatch: Int = 0
 
   /**
    * 准备下一个batch的训练
@@ -30,7 +30,7 @@ object Layer {
    * @return
    */
   def buildInputLayer(mapSize: Size): Layer = {
-    val layer: Layer = new Layer
+    val layer: Layer = new InputLayer
     layer.layerType = "input"
     layer.outMapNum = 1
     layer.setMapSize(mapSize)
@@ -39,7 +39,7 @@ object Layer {
 
 
   def buildConvLayer(outMapNum: Int, kernelSize: Size): Layer = {
-    val layer: Layer = new Layer
+    val layer: Layer = new ConvLayer
     layer.layerType = "conv"
     layer.outMapNum = outMapNum
     layer.kernelSize = kernelSize
@@ -48,7 +48,7 @@ object Layer {
 
 
   def buildSampLayer(scaleSize: Size): Layer = {
-    val layer: Layer = new Layer
+    val layer: Layer = new SampLayer
     layer.layerType = "samp"
     layer.scaleSize = scaleSize
     return layer
@@ -56,15 +56,16 @@ object Layer {
 
 
   def buildOutputLayer(classNum: Int): Layer = {
-    val layer: Layer = new Layer
+    val layer: Layer = new OutputLayer
     layer.classNum = classNum
     layer.layerType = "output"
     layer.mapSize = new Size(1, 1)
     layer.outMapNum = classNum
     return layer
   }
-
 }
+
+
 
 /**
  * 卷积核或者采样层scale的大小,长与宽可以不等.类型安全，定以后不可修改
@@ -73,7 +74,6 @@ object Layer {
  *
  *         创建时间：2014-7-8 下午4:11:00
  */
-@SerialVersionUID(-209157832162004118L)
 class Size extends Serializable {
   final var x: Int = 0
   final var y: Int = 0
@@ -120,7 +120,7 @@ class Size extends Serializable {
 class Layer extends Serializable {
 
   private var layerType: String = null
-  private var outMapNum: Int = 0
+  var outMapNum: Int = 0
   private var mapSize: Size = null
   private var kernelSize: Size = null
   private var scaleSize: Size = null
@@ -155,24 +155,6 @@ class Layer extends Serializable {
    */
   def getType: String = {
     return layerType
-  }
-
-  /**
-   * 获取输出向量个数
-   *
-   * @return
-   */
-  def getOutMapNum: Int = {
-    return outMapNum
-  }
-
-  /**
-   * 设置输出map的个数
-   *
-   * @param outMapNum
-   */
-  def setOutMapNum(outMapNum: Int) {
-    this.outMapNum = outMapNum
   }
 
   /**
@@ -277,17 +259,6 @@ class Layer extends Serializable {
   }
 
   /**
-   * 获取第index个map矩阵。处于性能考虑，没有返回复制对象，而是直接返回引用，调用端请谨慎，
-   * 避免修改outmaps，如需修改请调用setMapValue(...)
-   *
-   * @param index
-   * @return
-   */
-  def getMap(index: Int): BDM[Double] = {
-    return outMaps(Layer.recordInBatch)(index)
-  }
-
-  /**
    * 获取前一层第i个map到当前层第j个map的卷积核
    *
    * @param i
@@ -324,17 +295,6 @@ class Layer extends Serializable {
   }
 
   /**
-   * 获取第mapNo个map的残差.没有返回复制对象，而是直接返回引用，调用端请谨慎，
-   * 避免修改errors，如需修改请调用setError(...)
-   *
-   * @param mapNo
-   * @return
-   */
-  def getError(mapNo: Int): BDM[Double] = {
-    return errors(Layer.recordInBatch)(mapNo)
-  }
-
-  /**
    * 获取所有(每个记录和每个map)的残差
    *
    * @return
@@ -348,7 +308,7 @@ class Layer extends Serializable {
    *
    * @param batchSize
    */
-  def initErros(batchSize: Int) {
+  def initErrors(batchSize: Int) {
     errors = Array.ofDim[BDM[Double]](batchSize, outMapNum)
     for (i <- 0 until batchSize)
       for (j <- 0 until outMapNum) {
@@ -387,15 +347,6 @@ class Layer extends Serializable {
   }
 
   /**
-   * 获取batch各个map矩阵
-   *
-   * @return
-   */
-  def getMaps: Array[Array[BDM[Double]]] = {
-    return outMaps
-  }
-
-  /**
    * 获取第recordId记录下第mapNo的残差
    *
    * @param recordId
@@ -416,22 +367,20 @@ class Layer extends Serializable {
   def getMap(recordId: Int, mapNo: Int): BDM[Double] = {
     return outMaps(recordId)(mapNo)
   }
+}
 
-  /**
-   * 获取类别个数
-   *
-   * @return
-   */
-  def getClassNum: Int = {
-    return classNum
-  }
+class InputLayer extends Layer{
 
-  /**
-   * 获取所有的卷积核
-   *
-   * @return
-   */
-  def getKernel: Array[Array[BDM[Double]]] = {
-    return kernel
-  }
+}
+
+class ConvLayer extends Layer{
+
+}
+
+class SampLayer extends Layer{
+
+}
+
+class OutputLayer extends Layer{
+
 }

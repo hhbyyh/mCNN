@@ -5,11 +5,13 @@ package mycnn
 
 import java.util.{ArrayList, List}
 
+import breeze.linalg.axpy
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, _}
 import breeze.numerics.sigmoid
+import org.apache.spark.mllib.optimization.Gradient
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.rdd.RDD
-import org.apache.spark.mllib.linalg.Vector
+import org.apache.spark.mllib.linalg.{Vectors, Vector}
 
 object CNN {
 
@@ -58,6 +60,7 @@ class CNN extends Serializable {
       var count = 0
       var i = 0
       while (i < epochsNum) {
+        val start = System.nanoTime()
         Layer.prepareForNewBatch
         val batch = trainset.sample(true, actualBatchSize.toDouble * 2 / trainSize).take(actualBatchSize)
         batch.foreach(re => {
@@ -69,6 +72,7 @@ class CNN extends Serializable {
         })
         updateParas
         i += 1
+        println("epochsNum: " + i + "\t" + (System.nanoTime() - start) / 1e9 )
       }
       val p = 1.0 * right / count
       if (t % 10 == 1 && p > 0.96) {
@@ -85,10 +89,10 @@ class CNN extends Serializable {
     testset.map(record => {
       forward(record)
       val outputLayer = layers.get(layerNum - 1)
-      val mapNum = outputLayer.getOutMapNum
+      val mapNum = outputLayer.outMapNum
       val out = new Array[Double](mapNum)
       for (m <- 0 until mapNum) {
-        val outmap = outputLayer.getMap(m)
+        val outmap = outputLayer.getMap(Layer.recordInBatch, m)
         out(m) = outmap(0, 0)
       }
       Util.getMaxIndex(out)
@@ -138,7 +142,7 @@ class CNN extends Serializable {
    */
   private def updateBias(layer: Layer, lastLayer: Layer) {
     val errors: Array[Array[BDM[Double]]] = layer.getErrors
-    val mapNum: Int = layer.getOutMapNum
+    val mapNum: Int = layer.outMapNum
 
     var j: Int = 0
     while (j < mapNum) {
@@ -159,8 +163,8 @@ class CNN extends Serializable {
 	 * 前一层
    */
   private def updateKernels(layer: Layer, lastLayer: Layer) {
-    val mapNum: Int = layer.getOutMapNum
-    val lastMapNum: Int = lastLayer.getOutMapNum
+    val mapNum: Int = layer.outMapNum
+    val lastMapNum: Int = lastLayer.outMapNum
     var j = 0
     while (j < mapNum) {
       var i = 0
@@ -219,14 +223,14 @@ class CNN extends Serializable {
    * @param nextLayer
    */
   private def setSampErrors(layer: Layer, nextLayer: Layer) {
-    val mapNum: Int = layer.getOutMapNum
-    val nextMapNum: Int = nextLayer.getOutMapNum
+    val mapNum: Int = layer.outMapNum
+    val nextMapNum: Int = nextLayer.outMapNum
     var i = 0
     while (i < mapNum) {
       var sum: BDM[Double] = null // 对每一个卷积进行求和
       var j = 0
       while (j < nextMapNum) {
-        val nextError = nextLayer.getError(j)
+        val nextError = nextLayer.getError(Layer.recordInBatch, j)
         val kernel = nextLayer.getKernel(i, j)
         // 对卷积核进行180度旋转，然后进行full模式下得卷积
         if (sum == null)
@@ -247,14 +251,14 @@ class CNN extends Serializable {
    * @param nextLayer
    */
   private def setConvErrors(layer: Layer, nextLayer: Layer) {
-    val mapNum: Int = layer.getOutMapNum
+    val mapNum: Int = layer.outMapNum
 
     var m: Int = 0
     while (m < mapNum) {
 
       val scale: Size = nextLayer.getScaleSize
-      val nextError: BDM[Double] = nextLayer.getError(m)
-      val map: BDM[Double] = layer.getMap(m)
+      val nextError: BDM[Double] = nextLayer.getError(Layer.recordInBatch, m)
+      val map: BDM[Double] = layer.getMap(Layer.recordInBatch, m)
 
       var outMatrix: BDM[Double] = (1.0 - map)
       outMatrix = map :* outMatrix
@@ -273,12 +277,12 @@ class CNN extends Serializable {
    */
   private def setOutLayerErrors(record: LabeledPoint): Boolean = {
     val outputLayer: Layer = layers.get(layerNum - 1)
-    val mapNum: Int = outputLayer.getOutMapNum
+    val mapNum: Int = outputLayer.outMapNum
     val target: Array[Double] = new Array[Double](mapNum)
     val outmaps: Array[Double] = new Array[Double](mapNum)
     var m = 0
     while (m < mapNum) {
-      val outmap = outputLayer.getMap(m)
+      val outmap = outputLayer.getMap(Layer.recordInBatch, m)
       outmaps(m) = outmap(0, 0)
       m += 1
     }
@@ -347,14 +351,14 @@ class CNN extends Serializable {
   }
 
   private def setConvOutput(layer: Layer, lastLayer: Layer) {
-    val mapNum: Int = layer.getOutMapNum
-    val lastMapNum: Int = lastLayer.getOutMapNum
+    val mapNum: Int = layer.outMapNum
+    val lastMapNum: Int = lastLayer.outMapNum
     var j = 0
     while (j < mapNum) {
       var sum: BDM[Double] = null // 对每一个输入map的卷积进行求和
       var i = 0
       while (i < lastMapNum) {
-        val lastMap = lastLayer.getMap(i)
+        val lastMap = lastLayer.getMap(Layer.recordInBatch, i)
         val kernel = layer.getKernel(i, j)
         if (sum == null)
           sum = Util.convnValid(lastMap, kernel)
@@ -376,11 +380,11 @@ class CNN extends Serializable {
    * @param lastLayer
    */
   private def setSampOutput(layer: Layer, lastLayer: Layer) {
-    val lastMapNum: Int = lastLayer.getOutMapNum
+    val lastMapNum: Int = lastLayer.outMapNum
 
     var i: Int = 0
     while (i < lastMapNum) {
-      val lastMap: BDM[Double] = lastLayer.getMap(i)
+      val lastMap: BDM[Double] = lastLayer.getMap(Layer.recordInBatch, i)
       val scaleSize: Size = layer.getScaleSize
       val sampMatrix: BDM[Double] = Util.scaleMatrix(lastMap, scaleSize)
       layer.setMapValue(i, sampMatrix)
@@ -400,27 +404,45 @@ class CNN extends Serializable {
     while (i < layers.size) {
       val layer: Layer = layers.get(i)
       val frontLayer: Layer = layers.get(i - 1)
-      val frontMapNum: Int = frontLayer.getOutMapNum
+      val frontMapNum: Int = frontLayer.outMapNum
       layer.getType match {
         case "input" =>
         case "conv" =>
           layer.setMapSize(frontLayer.getMapSize.subtract(layer.getKernelSize, 1))
           layer.initKernel(frontMapNum)
           layer.initBias(frontMapNum)
-          layer.initErros(batchSize)
+          layer.initErrors(batchSize)
           layer.initOutmaps(batchSize)
         case "samp" =>
-          layer.setOutMapNum(frontMapNum)
+          layer.outMapNum = frontMapNum
           layer.setMapSize(frontLayer.getMapSize.divide(layer.getScaleSize))
-          layer.initErros(batchSize)
+          layer.initErrors(batchSize)
           layer.initOutmaps(batchSize)
         case "output" =>
           layer.initOutputKerkel(frontMapNum, frontLayer.getMapSize)
           layer.initBias(frontMapNum)
-          layer.initErros(batchSize)
+          layer.initErrors(batchSize)
           layer.initOutmaps(batchSize)
       }
       i += 1
     }
   }
 }
+
+//class CNNGradient extends Gradient {
+//  override def compute(data: Vector, label: Double, weights: Vector): (Vector, Double) = {
+//    val gradient = Vectors.zeros(weights.size)
+//    val loss = compute(data, label, weights, gradient)
+//    (gradient, loss)
+//  }
+//
+//  override def compute(
+//                        data: Vector,
+//                        label: Double,
+//                        weights: Vector,
+//                        cumGradient: Vector): Double = {
+//    val diff = dot(data, weights) - label
+//    axpy(diff, data, cumGradient)
+//    diff * diff / 2.0
+//  }
+//}
