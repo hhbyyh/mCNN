@@ -7,21 +7,6 @@ import breeze.stats.distributions.{Gamma, RandBasis}
 
 
 object Layer {
-  var recordInBatch: Int = 0
-
-  /**
-   * 准备下一个batch的训练
-   */
-  def prepareForNewBatch {
-    recordInBatch = 0
-  }
-
-  /**
-   * 准备下一条记录的训练
-   */
-  def prepareForNewRecord {
-    recordInBatch += 1
-  }
 
   /**
    * 初始化输入层
@@ -126,8 +111,8 @@ class Layer extends Serializable {
   private var scaleSize: Size = null
   private var kernel: Array[Array[BDM[Double]]] = null
   private var bias: BDV[Double] = null
-  private var outMaps: Array[Array[BDM[Double]]] = null
-  private var errors: Array[Array[BDM[Double]]] = null
+  private var outMaps: Array[BDM[Double]] = null
+  private var errors: Array[BDM[Double]] = null
   private var classNum: Int = -1
 
   /**
@@ -221,15 +206,12 @@ class Layer extends Serializable {
 
   /**
    * 初始化输出map
-   *
-   * @param batchSize
    */
-  def initOutmaps(batchSize: Int) {
-    outMaps = Array.ofDim[BDM[Double]](batchSize, outMapNum)
-    for (i <- 0 until batchSize)
-      for (j <- 0 until outMapNum) {
-        outMaps(i)(j) = new BDM[Double](mapSize.x, mapSize.y)
-      }
+  def initOutmaps {
+    outMaps = Array.ofDim[BDM[Double]](outMapNum)
+    for (j <- 0 until outMapNum) {
+      outMaps(j) = new BDM[Double](mapSize.x, mapSize.y)
+    }
   }
 
   /**
@@ -244,7 +226,7 @@ class Layer extends Serializable {
    * @param value
    */
   def setMapValue(mapNo: Int, mapX: Int, mapY: Int, value: Double) {
-    val m = outMaps(Layer.recordInBatch)(mapNo)
+    val m = outMaps(mapNo)
     m(mapX, mapY) = value
   }
 
@@ -255,7 +237,7 @@ class Layer extends Serializable {
    * @param outMatrix
    */
   def setMapValue(mapNo: Int, outMatrix: BDM[Double]) {
-    outMaps(Layer.recordInBatch)(mapNo) = outMatrix
+    outMaps(mapNo) = outMatrix
   }
 
   /**
@@ -280,7 +262,7 @@ class Layer extends Serializable {
    * @param value
    */
   def setError(mapNo: Int, mapX: Int, mapY: Int, value: Double) {
-    val m = errors(Layer.recordInBatch)(mapNo)
+    val m = errors(mapNo)
     m(mapX, mapY) = value
   }
 
@@ -291,7 +273,7 @@ class Layer extends Serializable {
    * @param matrix
    */
   def setError(mapNo: Int, matrix: BDM[Double]) {
-    errors(Layer.recordInBatch)(mapNo) = matrix
+    errors(mapNo) = matrix
   }
 
   /**
@@ -299,21 +281,19 @@ class Layer extends Serializable {
    *
    * @return
    */
-  def getErrors: Array[Array[BDM[Double]]] = {
+  def getErrors: Array[BDM[Double]] = {
     return errors
   }
 
   /**
    * 初始化残差数组
    *
-   * @param batchSize
    */
-  def initErrors(batchSize: Int) {
-    errors = Array.ofDim[BDM[Double]](batchSize, outMapNum)
-    for (i <- 0 until batchSize)
-      for (j <- 0 until outMapNum) {
-        errors(i)(j) = new BDM[Double](mapSize.x, mapSize.y)
-      }
+  def initErrors {
+    errors = Array.ofDim[BDM[Double]](outMapNum)
+    for (j <- 0 until outMapNum) {
+      errors(j) = new BDM[Double](mapSize.x, mapSize.y)
+    }
   }
 
   /**
@@ -349,23 +329,21 @@ class Layer extends Serializable {
   /**
    * 获取第recordId记录下第mapNo的残差
    *
-   * @param recordId
    * @param mapNo
    * @return
    */
-  def getError(recordId: Int, mapNo: Int): BDM[Double] = {
-    return errors(recordId)(mapNo)
+  def getError(mapNo: Int): BDM[Double] = {
+    return errors(mapNo)
   }
 
   /**
    * 获取第recordId记录下第mapNo的输出map
    *
-   * @param recordId
    * @param mapNo
    * @return
    */
-  def getMap(recordId: Int, mapNo: Int): BDM[Double] = {
-    return outMaps(recordId)(mapNo)
+  def getMap(mapNo: Int): BDM[Double] = {
+    return outMaps(mapNo)
   }
 }
 

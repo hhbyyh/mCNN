@@ -21,14 +21,14 @@ object Driver {
     //导入数据集
     Logger.getLogger("org").setLevel(Level.WARN)
     Logger.getLogger("akka").setLevel(Level.WARN)
-    val conf = new SparkConf().setMaster("local").setAppName("ttt")
+    val conf = new SparkConf().setMaster("local[8]").setAppName("ttt")
     val sc = new SparkContext(conf)
-    val lines = sc.textFile("dataset/train.format")
+    val lines = sc.textFile("dataset/train.format", 8)
     val data = lines.map(line => line.split(",")).map(arr => arr.map(_.toDouble))
       .map(arr => new LabeledPoint(arr(784), Vectors.dense(arr.slice(0, 784))))
 
     val start = System.nanoTime()
-    cnn.train(data, 5)
+    cnn.train(data, 500)
     println("Training time: " + (System.nanoTime() - start) / 1e9 )
 
     //预测

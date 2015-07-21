@@ -131,11 +131,8 @@ object Util {
    * @param j
    * @return
    */
-  def sum(errors: Array[Array[BDM[Double]]], j: Int): BDM[Double] = {
-    val result = errors(0)(j).copy
-    for (i <- 1 until errors.size) {
-      result += errors(i)(j)
-    }
+  def sum(errors: Array[BDM[Double]], j: Int): BDM[Double] = {
+    val result = errors(j).copy
     return result
   }
 
