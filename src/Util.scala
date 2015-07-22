@@ -1,7 +1,4 @@
-package mycnn
-
-import java.io.Serializable
-import java.util.{Arrays, Random, Set}
+package com.intel.webscaleml.algorithms.neuralNetwork
 
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, kron}
 
@@ -11,30 +8,17 @@ object Util {
     (BDM.rand[Double](row, col) - 0.05) / 10.0
   }
 
-  /**
-   * 随机初始化一维向量
-   *
-   * @param len
-   * @return
-   */
   def randomArray(len: Int): BDV[Double] = {
     BDV.zeros[Double](len)
   }
 
-  /**
-   * 克罗内克积,对矩阵进行扩展
-   *
-   * @param matrix
-   * @param scale
-   * @return
-   */
   def kronecker(matrix: BDM[Double], scale: Size): BDM[Double] = {
     val ones = BDM.ones[Double](scale.x, scale.y)
-    return kron(matrix, ones)
+    kron(matrix, ones)
   }
 
   /**
-   * 对矩阵进行均值缩小
+   * scale down
    *
    * @param matrix
    */
@@ -64,11 +48,11 @@ object Util {
       }
       i += 1
     }
-    return outMatrix
+    outMatrix
   }
 
   /**
-   * 计算full模式的卷积
+   * full conv
    *
    * @param matrix
    * @param kernel
@@ -89,11 +73,11 @@ object Util {
       }
       i += 1
     }
-    return convnValid(extendMatrix, kernel)
+    convnValid(extendMatrix, kernel)
   }
 
   /**
-   * 计算valid模式的卷积
+   * valid conv
    *
    * @param matrix
    * @param kernel
@@ -121,19 +105,7 @@ object Util {
       }
       i += 1
     }
-    return outMatrix
-  }
-
-  /**
-   * 对errors[...][j]元素求和
-   *
-   * @param errors
-   * @param j
-   * @return
-   */
-  def sum(errors: Array[BDM[Double]], j: Int): BDM[Double] = {
-    val result = errors(j).copy
-    return result
+    outMatrix
   }
 
   def getMaxIndex(out: Array[Double]): Int = {
@@ -147,7 +119,6 @@ object Util {
       }
       i += 1
     }
-    return index
+    index
   }
-
 }
