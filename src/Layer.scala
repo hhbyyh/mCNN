@@ -111,8 +111,6 @@ class Layer extends Serializable {
   private var scaleSize: Size = null
   private var kernel: Array[Array[BDM[Double]]] = null
   private var bias: BDV[Double] = null
-  private var outMaps: Array[BDM[Double]] = null
-  private var errors: Array[BDM[Double]] = null
   private var classNum: Int = -1
 
   /**
@@ -205,42 +203,6 @@ class Layer extends Serializable {
   }
 
   /**
-   * 初始化输出map
-   */
-  def initOutmaps {
-    outMaps = Array.ofDim[BDM[Double]](outMapNum)
-    for (j <- 0 until outMapNum) {
-      outMaps(j) = new BDM[Double](mapSize.x, mapSize.y)
-    }
-  }
-
-  /**
-   * 设置map值
-   *
-   * @param mapNo
-	 * 第几个map
-   * @param mapX
-	 * map的高
-   * @param mapY
-	 * map的宽
-   * @param value
-   */
-  def setMapValue(mapNo: Int, mapX: Int, mapY: Int, value: Double) {
-    val m = outMaps(mapNo)
-    m(mapX, mapY) = value
-  }
-
-  /**
-   * 以矩阵形式设置第mapNo个map的值
-   *
-   * @param mapNo
-   * @param outMatrix
-   */
-  def setMapValue(mapNo: Int, outMatrix: BDM[Double]) {
-    outMaps(mapNo) = outMatrix
-  }
-
-  /**
    * 获取前一层第i个map到当前层第j个map的卷积核
    *
    * @param i
@@ -253,48 +215,6 @@ class Layer extends Serializable {
     return kernel(i)(j)
   }
 
-  /**
-   * 设置残差值
-   *
-   * @param mapNo
-   * @param mapX
-   * @param mapY
-   * @param value
-   */
-  def setError(mapNo: Int, mapX: Int, mapY: Int, value: Double) {
-    val m = errors(mapNo)
-    m(mapX, mapY) = value
-  }
-
-  /**
-   * 以map矩阵块形式设置残差值
-   *
-   * @param mapNo
-   * @param matrix
-   */
-  def setError(mapNo: Int, matrix: BDM[Double]) {
-    errors(mapNo) = matrix
-  }
-
-  /**
-   * 获取所有(每个记录和每个map)的残差
-   *
-   * @return
-   */
-  def getErrors: Array[BDM[Double]] = {
-    return errors
-  }
-
-  /**
-   * 初始化残差数组
-   *
-   */
-  def initErrors {
-    errors = Array.ofDim[BDM[Double]](outMapNum)
-    for (j <- 0 until outMapNum) {
-      errors(j) = new BDM[Double](mapSize.x, mapSize.y)
-    }
-  }
 
   /**
    *
@@ -326,25 +246,6 @@ class Layer extends Serializable {
     bias(mapNo) = value
   }
 
-  /**
-   * 获取第recordId记录下第mapNo的残差
-   *
-   * @param mapNo
-   * @return
-   */
-  def getError(mapNo: Int): BDM[Double] = {
-    return errors(mapNo)
-  }
-
-  /**
-   * 获取第recordId记录下第mapNo的输出map
-   *
-   * @param mapNo
-   * @return
-   */
-  def getMap(mapNo: Int): BDM[Double] = {
-    return outMaps(mapNo)
-  }
 }
 
 class InputLayer extends Layer{
