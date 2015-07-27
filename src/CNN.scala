@@ -1,9 +1,26 @@
-package com.intel.webscaleml.algorithms.neuralNetwork
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.spark.mllib.neuralNetwork
 
 import java.util.{ArrayList, List}
 
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, _}
 import breeze.numerics.sigmoid
+import org.apache.spark.Logging
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.rdd.RDD
@@ -30,7 +47,7 @@ class CNNTopology {
 /**
  * Convolution neural network
  */
-class CNN private extends Serializable {
+class CNN private extends Serializable with Logging{
   private var ALPHA: Double = 0.85
   private var layers: List[CNNLayer] = null
   private var layerNum: Int = 0
@@ -99,7 +116,6 @@ class CNN private extends Serializable {
       var count = 0
       var i = 0
       while (i < epochsNum) {
-        val start = System.nanoTime()
         val record = dataArr(i)
         val result = train(record)
         if (result._1) right += 1
@@ -107,40 +123,35 @@ class CNN private extends Serializable {
         val gradient: Array[(Array[Array[BDM[Double]]], Array[Double])] = result._2
         updateParams(gradient, 1)
         i += 1
-        if(i % 100 == 0)
-          println("epochsNum: " + i + "\t" + (System.nanoTime() - start) / 1e9 )
       }
       val p = 1.0 * right / count
       if (t % 10 == 1 && p > 0.96) {
         ALPHA = 0.001 + ALPHA * 0.9
       }
       t += 1
-      println("precision " + right + "/" + count + "=" + p)
+      logInfo(s"precision $right/$count = $p")
     }
   }
 
   def train(trainSet: RDD[LabeledPoint]) {
     var t = 0
     val trainSize = trainSet.count().toInt
-    val gZero = train(trainSet.first())._2
-    gZero.foreach(tu =>{
-      if(tu != null){
+    val gZero = train(trainSet.first)._2
+    gZero.foreach(tu => if (tu != null){
         tu._1.foreach(m => m.foreach(x => x -= x))
-        val len = tu._2.length
-        for(i <- 0 until len){
-          tu._2(i) = 0
-        }
+        (0 until tu._2.length).foreach(i => tu._2(i) = 0)
       }
-    })
+    )
     var totalCount = 0
     var totalRight = 0
     while (t < maxIterations) {
-      val (gradientSum, right, count) = trainSet.sample(false, batchSize.toDouble/trainSize, 42 + t)
+      val (gradientSum, right, count) = trainSet
+        .sample(false, batchSize.toDouble/trainSize, 42 + t)
         .treeAggregate((gZero, 0, 0))(
           seqOp = (c, v) => {
             val result = train(v)
             val gradient = result._2
-            val right = if(result._1) 1 else 0
+            val right = if (result._1) 1 else 0
             (CNN.combineGradient(c._1, gradient), c._2 + right, c._3 + 1)
           },
           combOp = (c1, c2) => {
@@ -148,7 +159,7 @@ class CNN private extends Serializable {
           })
 
       t += 1
-      if(count > 0){
+      if (count > 0){
         updateParams(gradientSum, count)
         val p = 1.0 * totalRight / totalCount
         if (t % 10 == 1 && p > 0.96) {
@@ -156,8 +167,8 @@ class CNN private extends Serializable {
         }
         totalCount += count
         totalRight += right
-        if(totalCount > 10000){
-          println(t + "\tprecision " + totalRight + "/" + totalCount + "=" + p)
+        if (totalCount > 10000){
+          logInfo(s"precision $totalRight/$totalCount = $p")
           totalCount = 0
           totalRight = 0
         }
@@ -272,7 +283,7 @@ class CNN private extends Serializable {
 
   private def updateParams(
       gradient: Array[(Array[Array[BDM[Double]]],
-      Array[Double])], 
+      Array[Double])],
       batchSize: Int): Unit = {
     var l: Int = 1
     while (l < layerNum) {
@@ -290,7 +301,9 @@ class CNN private extends Serializable {
     }
   }
 
-  private def updateKernels(layer: ConvCNNLayer, gradient: Array[Array[BDM[Double]]], batchSize: Int): Unit = {
+  private def updateKernels(
+      layer: ConvCNNLayer,
+      gradient: Array[Array[BDM[Double]]], batchSize: Int): Unit = {
     val len = gradient.length
     val width = gradient(0).length
     var j = 0
@@ -322,7 +335,7 @@ class CNN private extends Serializable {
     var j: Int = 0
     val gradient = new Array[Double](mapNum)
     while (j < mapNum) {
-      val error: BDM[Double] = errors(j) //Util.sum(errors, j)
+      val error: BDM[Double] = errors(j)
       val deltaBias: Double = sum(error)
       gradient(j) = deltaBias
       j += 1
@@ -364,7 +377,10 @@ class CNN private extends Serializable {
    * @param layer
    * @param nextLayer
    */
-  private def setSampErrors(layer: CNNLayer, nextLayer: ConvCNNLayer, nextLayerError: Array[BDM[Double]]): Array[BDM[Double]] = {
+  private def setSampErrors(
+      layer: CNNLayer,
+      nextLayer: ConvCNNLayer,
+      nextLayerError: Array[BDM[Double]]): Array[BDM[Double]] = {
     val mapNum: Int = layer.getOutMapNum
     val nextMapNum: Int = nextLayer.getOutMapNum
     val errors = new Array[BDM[Double]](mapNum)
@@ -376,10 +392,12 @@ class CNN private extends Serializable {
         val nextError = nextLayerError(j)
         val kernel = nextLayer.getKernel(i, j)
         // rotate kernel by 180 degrees and get full convolution
-        if (sum == null)
+        if (sum == null) {
           sum = CNN.convnFull(nextError, flipud(fliplr(kernel)))
-        else
+        }
+        else {
           sum += CNN.convnFull(nextError, flipud(fliplr(kernel)))
+        }
         j += 1
       }
       errors(i) = sum
@@ -421,7 +439,9 @@ class CNN private extends Serializable {
    * @param record
    * @return
    */
-  private def setOutLayerErrors(record: LabeledPoint, output: Array[BDM[Double]]): (Boolean, Array[BDM[Double]]) = {
+  private def setOutLayerErrors(
+      record: LabeledPoint,
+      output: Array[BDM[Double]]): (Boolean, Array[BDM[Double]]) = {
     val outputLayer: CNNLayer = layers.get(layerNum - 1)
     val mapNum: Int = outputLayer.getOutMapNum
     val target: Array[Double] = new Array[Double](mapNum)
@@ -445,9 +465,9 @@ class CNN private extends Serializable {
   private def setInLayerOutput(record: Vector): Array[BDM[Double]] = {
     val inputLayer: CNNLayer = layers.get(0)
     val mapSize = inputLayer.getMapSize
-    if (record.size != mapSize.x * mapSize.y)
+    if (record.size != mapSize.x * mapSize.y) {
       throw new RuntimeException("data size and map size mismatch!")
-
+    }
     val m = new BDM[Double](mapSize.x, mapSize.y)
     var i: Int = 0
     while (i < mapSize.x) {
@@ -461,7 +481,9 @@ class CNN private extends Serializable {
     Array(m)
   }
 
-  private def setConvOutput(layer: ConvCNNLayer, outputs: Array[BDM[Double]]): Array[BDM[Double]] = {
+  private def setConvOutput(
+      layer: ConvCNNLayer,
+      outputs: Array[BDM[Double]]): Array[BDM[Double]] = {
     val mapNum: Int = layer.getOutMapNum
     val lastMapNum: Int = outputs.length
     val output = new Array[BDM[Double]](mapNum)
@@ -473,10 +495,12 @@ class CNN private extends Serializable {
       while (i < lastMapNum) {
         val lastMap = outputs(i)
         val kernel = layer.getKernel(i, j)
-        if (sum == null)
+        if (sum == null) {
           sum = CNN.convnValid(lastMap, kernel)
-        else
+        }
+        else {
           sum += CNN.convnValid(lastMap, kernel)
+        }
         i += 1
       }
       sum = sigmoid(sum + oldBias(j))
@@ -491,7 +515,9 @@ class CNN private extends Serializable {
    *
    * @param layer
    */
-  private def setSampOutput(layer: SampCNNLayer, outputs: Array[BDM[Double]]): Array[BDM[Double]] = {
+  private def setSampOutput(
+      layer: SampCNNLayer,
+      outputs: Array[BDM[Double]]): Array[BDM[Double]] = {
     val lastMapNum: Int = outputs.length
     val output = new Array[BDM[Double]](lastMapNum)
     var i: Int = 0
@@ -530,7 +556,7 @@ object CNN {
       var j = 0
       while (j < sn) {
         var sum = 0.0
-        var si =  i * scale.x
+        var si = i * scale.x
         while (si < (i + 1) * scale.x) {
           var sj = j * scale.y
           while (sj < (j + 1) * scale.y) {
@@ -626,7 +652,7 @@ object CNN {
     val l = g1.length
     var li = 0
     while(li < l){
-      if(g1(li) != null){
+      if (g1(li) != null){
         // kernel
         val layer = g1(li)._1
         val x = layer.length

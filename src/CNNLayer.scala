@@ -1,7 +1,24 @@
-package com.intel.webscaleml.algorithms.neuralNetwork
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.spark.mllib.neuralNetwork
 
 import java.io.Serializable
-import breeze.linalg.{DenseVector => BDV, DenseMatrix => BDM}
+
+import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV}
 
 object CNNLayer {
 
@@ -47,8 +64,9 @@ class Scale(var x: Int, var y: Int) extends Serializable {
   private[neuralNetwork] def divide(scaleSize: Scale): Scale = {
     val x: Int = this.x / scaleSize.x
     val y: Int = this.y / scaleSize.y
-    if (x * scaleSize.x != this.x || y * scaleSize.y != this.y) 
+    if (x * scaleSize.x != this.x || y * scaleSize.y != this.y){
       throw new RuntimeException(this + "can not be divided" + scaleSize)
+    }
     new Scale(x, y)
   }
 
@@ -95,38 +113,37 @@ class ConvCNNLayer private[neuralNetwork] extends CNNLayer{
   private var kernelSize: Scale = null
 
   this.layerType = "conv"
-  def initBias(frontMapNum: Int) {
+  private[neuralNetwork] def initBias(frontMapNum: Int) {
     this.bias = BDV.zeros[Double](outMapNum)
   }
 
-  def initKernel(frontMapNum: Int) {
+  private[neuralNetwork] def initKernel(frontMapNum: Int) {
     this.kernel = Array.ofDim[BDM[Double]](frontMapNum, outMapNum)
     for (i <- 0 until frontMapNum)
       for (j <- 0 until outMapNum)
         kernel(i)(j) = (BDM.rand[Double](kernelSize.x, kernelSize.y) - 0.05) / 10.0
   }
 
-  def getBias = bias
-  def setBias(mapNo: Int, value: Double) {
+  def getBias: BDV[Double] = bias
+  def setBias(mapNo: Int, value: Double): this.type = {
     bias(mapNo) = value
+    this
   }
 
-  def getKernelSize = kernelSize
+  def getKernelSize: Scale = kernelSize
   def setKernelSize(value: Scale): this.type = {
     this.kernelSize = value
     this
   }
 
-  def getKernel(i: Int, j: Int): BDM[Double] = {
-    kernel(i)(j)
-  }
+  def getKernel(i: Int, j: Int): BDM[Double] = kernel(i)(j)
 }
 
 class SampCNNLayer private[neuralNetwork] extends CNNLayer{
   private var scaleSize: Scale = null
   this.layerType = "samp"
-  
-  def getScaleSize = scaleSize
+
+  def getScaleSize: Scale = scaleSize
   def setScaleSize(value: Scale): this.type = {
     this.scaleSize = value
     this
@@ -141,7 +158,7 @@ class OutputCNNLayer private[neuralNetwork] extends ConvCNNLayer{
    * @param frontMapNum
    * @param size
    */
-  def initOutputKernels(frontMapNum: Int, size: Scale) {
+  private[neuralNetwork] def initOutputKernels(frontMapNum: Int, size: Scale) {
     this.setKernelSize(size)
     this.initKernel(frontMapNum)
   }

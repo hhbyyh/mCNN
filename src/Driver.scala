@@ -1,4 +1,4 @@
-import com.intel.webscaleml.algorithms.neuralNetwork.{CNNTopology, Scale, CNNLayer, CNN}
+import org.apache.spark.mllib.neuralNetwork.{CNNTopology, Scale, CNNLayer, CNN}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.LabeledPoint
