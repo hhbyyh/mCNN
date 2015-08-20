@@ -123,13 +123,14 @@ class CNN private extends Serializable with Logging{
         val gradient: Array[(Array[Array[BDM[Double]]], Array[Double])] = result._2
         updateParams(gradient, 1)
         i += 1
+        if(i % 1000 == 0) println(s"$t:\t$i\tsamplesprecision $right/$count = " + 1.0 * right / count)
       }
       val p = 1.0 * right / count
       if (t % 10 == 1 && p > 0.96) {
         ALPHA = 0.001 + ALPHA * 0.9
       }
       t += 1
-      logInfo(s"precision $right/$count = $p")
+      println(s"precision $right/$count = $p")
     }
   }
 
@@ -195,8 +196,8 @@ class CNN private extends Serializable with Logging{
    *
    * @return (isRight, gradient)
    */
-  private def train(
-      record: LabeledPoint): (Boolean, Array[(Array[Array[BDM[Double]]], Array[Double])]) = {
+  private def train(record: LabeledPoint)
+    : (Boolean, Array[(Array[Array[BDM[Double]]], Array[Double])]) = {
     val outputs = forward(record.features)
     val (right, errors) = backPropagation(record, outputs)
     val gradient = getGradient(outputs, errors)
@@ -214,16 +215,7 @@ class CNN private extends Serializable with Logging{
     var l: Int = 1
     while (l < layers.size) {
       val layer: CNNLayer = layers.get(l)
-      outputs(l) =
-        layer.getType match {
-          case "conv" =>
-            setConvOutput(layer.asInstanceOf[ConvCNNLayer], outputs(l - 1))
-          case "samp" =>
-            setSampOutput(layer.asInstanceOf[SampCNNLayer], outputs(l - 1))
-          case "output" =>
-            setConvOutput(layer.asInstanceOf[ConvCNNLayer], outputs(l - 1))
-          case _ => null
-        }
+      outputs(l) = layer.eval(outputs(l - 1))
       l += 1
     }
     outputs
@@ -244,13 +236,7 @@ class CNN private extends Serializable with Logging{
     while (l > 0) {
       val layer: CNNLayer = layers.get(l)
       val nextLayer: CNNLayer = layers.get(l + 1)
-      errors(l) = layer.getType match {
-        case "samp" =>
-          setSampErrors(layer, nextLayer.asInstanceOf[ConvCNNLayer], errors(l + 1))
-        case "conv" =>
-          setConvErrors(layer, nextLayer.asInstanceOf[SampCNNLayer], errors(l + 1), outputs(l))
-        case _ => null
-      }
+      errors(l) = layer.prevDelta(nextLayer, errors(l + 1), outputs(l))
       l -= 1
     }
     (result._1, errors)
@@ -267,13 +253,9 @@ class CNN private extends Serializable with Logging{
       val lastLayer: CNNLayer = layers.get(l - 1)
       gradient(l) = layer.getType match {
         case "conv" =>
-          val kernelGradient = getKernelsGradient(layer, lastLayer, errors(l), outputs(l - 1))
-          val biasGradient = getBiasGradient(layer, errors(l))
-          (kernelGradient, biasGradient)
+          layer.asInstanceOf[ConvCNNLayer].grad(lastLayer, errors(l), outputs(l - 1))
         case "output" =>
-          val kernelGradient = getKernelsGradient(layer, lastLayer, errors(l), outputs(l - 1))
-          val biasGradient = getBiasGradient(layer, errors(l))
-          (kernelGradient, biasGradient)
+          layer.asInstanceOf[ConvCNNLayer].grad(lastLayer, errors(l), outputs(l - 1))
         case _ => null
       }
       l += 1
@@ -282,8 +264,7 @@ class CNN private extends Serializable with Logging{
   }
 
   private def updateParams(
-      gradient: Array[(Array[Array[BDM[Double]]],
-      Array[Double])],
+      gradient: Array[(Array[Array[BDM[Double]]], Array[Double])],
       batchSize: Int): Unit = {
     var l: Int = 1
     while (l < layerNum) {
@@ -322,115 +303,6 @@ class CNN private extends Serializable with Logging{
   private def updateBias(layer: ConvCNNLayer, gradient: Array[Double], batchSize: Int): Unit = {
     val gv = new BDV[Double](gradient)
     layer.getBias += gv * ALPHA / batchSize.toDouble
-  }
-
-  /**
-   * get bias gradient
-   *
-   * @param layer layer to be updated
-   * @param errors errors of this layer
-   */
-  private def getBiasGradient(layer: CNNLayer, errors: Array[BDM[Double]]): Array[Double] = {
-    val mapNum: Int = layer.getOutMapNum
-    var j: Int = 0
-    val gradient = new Array[Double](mapNum)
-    while (j < mapNum) {
-      val error: BDM[Double] = errors(j)
-      val deltaBias: Double = sum(error)
-      gradient(j) = deltaBias
-      j += 1
-    }
-    gradient
-  }
-
-  /**
-   * get kernels gradient
-   *
-   * @param layer
-   * @param lastLayer
-   */
-  private def getKernelsGradient(
-      layer: CNNLayer,
-      lastLayer: CNNLayer,
-      layerError: Array[BDM[Double]],
-      lastOutput: Array[BDM[Double]]): Array[Array[BDM[Double]]] = {
-    val mapNum: Int = layer.getOutMapNum
-    val lastMapNum: Int = lastLayer.getOutMapNum
-    val delta = Array.ofDim[BDM[Double]](lastMapNum, mapNum)
-    var j = 0
-    while (j < mapNum) {
-      var i = 0
-      while (i < lastMapNum) {
-        val error = layerError(j)
-        val deltaKernel = CNN.convnValid(lastOutput(i), error)
-        delta(i)(j) = deltaKernel
-        i += 1
-      }
-      j += 1
-    }
-    delta
-  }
-
-  /**
-   * set errors for sampling layer
-   *
-   * @param layer
-   * @param nextLayer
-   */
-  private def setSampErrors(
-      layer: CNNLayer,
-      nextLayer: ConvCNNLayer,
-      nextLayerError: Array[BDM[Double]]): Array[BDM[Double]] = {
-    val mapNum: Int = layer.getOutMapNum
-    val nextMapNum: Int = nextLayer.getOutMapNum
-    val errors = new Array[BDM[Double]](mapNum)
-    var i = 0
-    while (i < mapNum) {
-      var sum: BDM[Double] = null // sum for every kernel
-      var j = 0
-      while (j < nextMapNum) {
-        val nextError = nextLayerError(j)
-        val kernel = nextLayer.getKernel(i, j)
-        // rotate kernel by 180 degrees and get full convolution
-        if (sum == null) {
-          sum = CNN.convnFull(nextError, flipud(fliplr(kernel)))
-        }
-        else {
-          sum += CNN.convnFull(nextError, flipud(fliplr(kernel)))
-        }
-        j += 1
-      }
-      errors(i) = sum
-      i += 1
-    }
-    errors
-  }
-
-  /**
-   * set errors for convolution layer
-   *
-   * @param layer
-   * @param nextLayer
-   */
-  private def setConvErrors(
-      layer: CNNLayer,
-      nextLayer: SampCNNLayer,
-      nextLayerError: Array[BDM[Double]],
-      layerOutput: Array[BDM[Double]]): Array[BDM[Double]] = {
-    val mapNum: Int = layer.getOutMapNum
-    val errors = new Array[BDM[Double]](mapNum)
-    var m: Int = 0
-    while (m < mapNum) {
-      val scale: Scale = nextLayer.getScaleSize
-      val nextError: BDM[Double] = nextLayerError(m)
-      val map: BDM[Double] = layerOutput(m)
-      var outMatrix: BDM[Double] = (1.0 - map)
-      outMatrix = map :* outMatrix
-      outMatrix = outMatrix :* CNN.kronecker(nextError, scale)
-      errors(m) = outMatrix
-      m += 1
-    }
-    errors
   }
 
   /**
@@ -479,55 +351,6 @@ class CNN private extends Serializable with Logging{
       i += 1
     }
     Array(m)
-  }
-
-  private def setConvOutput(
-      layer: ConvCNNLayer,
-      outputs: Array[BDM[Double]]): Array[BDM[Double]] = {
-    val mapNum: Int = layer.getOutMapNum
-    val lastMapNum: Int = outputs.length
-    val output = new Array[BDM[Double]](mapNum)
-    var j = 0
-    val oldBias = layer.getBias
-    while (j < mapNum) {
-      var sum: BDM[Double] = null
-      var i = 0
-      while (i < lastMapNum) {
-        val lastMap = outputs(i)
-        val kernel = layer.getKernel(i, j)
-        if (sum == null) {
-          sum = CNN.convnValid(lastMap, kernel)
-        }
-        else {
-          sum += CNN.convnValid(lastMap, kernel)
-        }
-        i += 1
-      }
-      sum = sigmoid(sum + oldBias(j))
-      output(j) = sum
-      j += 1
-    }
-    output
-  }
-
-  /**
-   * set output for sampling layer
-   *
-   * @param layer
-   */
-  private def setSampOutput(
-      layer: SampCNNLayer,
-      outputs: Array[BDM[Double]]): Array[BDM[Double]] = {
-    val lastMapNum: Int = outputs.length
-    val output = new Array[BDM[Double]](lastMapNum)
-    var i: Int = 0
-    while (i < lastMapNum) {
-      val lastMap: BDM[Double] = outputs(i)
-      val scaleSize: Scale = layer.getScaleSize
-      output(i) = CNN.scaleMatrix(lastMap, scaleSize)
-      i += 1
-    }
-    output
   }
 }
 
