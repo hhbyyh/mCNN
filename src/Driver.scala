@@ -12,7 +12,7 @@ object Driver {
     topology.addLayer(CNNLayer.buildSampLayer(new Scale(2, 2)))
     topology.addLayer(CNNLayer.buildConvLayer(12, new Scale(5, 5)))
     topology.addLayer(CNNLayer.buildSampLayer(new Scale(2, 2)))
-    topology.addLayer(CNNLayer.buildOutputLayer(10))
+    topology.addLayer(CNNLayer.buildConvLayer(12, new Scale(4, 4)))
     val cnn: CNN = new CNN(topology).setMaxIterations(500000).setMiniBatchSize(16)
 
     Logger.getLogger("org").setLevel(Level.WARN)

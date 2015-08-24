@@ -42,13 +42,6 @@ object CNNLayer {
     layer.setScaleSize(scaleSize)
     layer
   }
-
-  def buildOutputLayer(classNum: Int): CNNLayer = {
-    val layer = new OutputCNNLayer
-    layer.mapSize = new Scale(1, 1)
-    layer.mapNum = classNum
-    layer
-  }
 }
 
 /**
@@ -107,32 +100,30 @@ abstract class CNNLayer private[neuralNetwork] extends Serializable {
 
   def getType: String = layerType
 
-  def eval(input: Array[BDM[Double]]): Array[BDM[Double]]
+  def forward(input: Array[BDM[Double]]): Array[BDM[Double]]
 
-  def prevDelta(nextLayer: CNNLayer,
-    nextLayerError: Array[BDM[Double]],
-    layerOutput: Array[BDM[Double]]): Array[BDM[Double]]
+  def prevDelt(
+      nextDelta: Array[BDM[Double]],
+      input: Array[BDM[Double]]): Array[BDM[Double]]
 
-  def grad(lastLayer: CNNLayer,
-                    layerError: Array[BDM[Double]],
-                    lastOutput: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double])
+  def grad(
+    delta: Array[BDM[Double]],
+    layerInput: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double])
 }
 
 class InputCNNLayer extends CNNLayer{
   this.layerType = "input"
 
-  override def eval(input: Array[BDM[Double]]): Array[BDM[Double]] = {
+  override def forward(input: Array[BDM[Double]]): Array[BDM[Double]] = {
     input
   }
 
-  override def prevDelta(nextLayer: CNNLayer,
-                nextLayerError: Array[BDM[Double]],
-                layerOutput: Array[BDM[Double]]): Array[BDM[Double]] = {
+  override def prevDelt(nextdelta: Array[BDM[Double]],
+                         input: Array[BDM[Double]]): Array[BDM[Double]] = {
     throw new RuntimeException("should not be invoked")
   }
 
   override def grad(
-           lastLayer: CNNLayer,
            layerError: Array[BDM[Double]],
            lastOutput: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double]) ={
     return null
@@ -169,7 +160,7 @@ class ConvCNNLayer private[neuralNetwork] extends CNNLayer{
   }
   def getKernel(i: Int, j: Int): BDM[Double] = kernel(i)(j)
 
-  override def eval(input: Array[BDM[Double]]): Array[BDM[Double]] = {
+  override def forward(input: Array[BDM[Double]]): Array[BDM[Double]] = {
     val mapNum: Int = this.mapNum
     val lastMapNum: Int = input.length
     val output = new Array[BDM[Double]](mapNum)
@@ -196,53 +187,58 @@ class ConvCNNLayer private[neuralNetwork] extends CNNLayer{
     output
   }
 
-  override def prevDelta(nextLayer: CNNLayer,
-                         nextLayerError: Array[BDM[Double]],
-                         layerOutput: Array[BDM[Double]]): Array[BDM[Double]] = {
-    val mapNum: Int = this.getOutMapNum
+  override def prevDelt(
+      nextDelta: Array[BDM[Double]],
+      layerInput: Array[BDM[Double]]): Array[BDM[Double]] = {
+
+    val mapNum: Int = layerInput.length
+    val nextMapNum: Int = this.getOutMapNum
     val errors = new Array[BDM[Double]](mapNum)
-    var m: Int = 0
-    // get scale size of the next layer
-    val nextErrorScale = new Scale(nextLayerError(0).cols, nextLayerError(0).rows)
-    val scale: Scale = this.getMapSize.divide(nextErrorScale)
-    while (m < mapNum) {
-      val nextError: BDM[Double] = nextLayerError(m)
-      val map: BDM[Double] = layerOutput(m)
-      var outMatrix: BDM[Double] = (1.0 - map)
-      outMatrix = map :* outMatrix
-      outMatrix = outMatrix :* CNN.kronecker(nextError, scale)
-      errors(m) = outMatrix
-      m += 1
+    var i = 0
+    while (i < mapNum) {
+      var sum: BDM[Double] = null // sum for every kernel
+      var j = 0
+      while (j < nextMapNum) {
+        val nextError = nextDelta(j)
+        val kernel = this.getKernel(i, j)
+        // rotate kernel by 180 degrees and get full convolution
+        if (sum == null) {
+          sum = CNN.convnFull(nextError, flipud(fliplr(kernel)))
+        }
+        else {
+          sum += CNN.convnFull(nextError, flipud(fliplr(kernel)))
+        }
+        j += 1
+      }
+      errors(i) = sum
+      i += 1
     }
     errors
   }
 
   override def grad(
-           lastLayer: CNNLayer,
-           layerError: Array[BDM[Double]],
-           lastOutput: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double]) = {
-    val kernelGradient = getKernelsGradient(lastLayer, layerError, lastOutput)
+      layerError: Array[BDM[Double]],
+      input: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double]) = {
+    val kernelGradient = getKernelsGradient(layerError, input)
     val biasGradient = getBiasGradient(layerError)
     (kernelGradient, biasGradient)
   }
 
   /**
    * get kernels gradient
-   *
-   * @param lastLayer
    */
-  private def getKernelsGradient(lastLayer: CNNLayer,
-                                  layerError: Array[BDM[Double]],
-                                  lastOutput: Array[BDM[Double]]): Array[Array[BDM[Double]]] = {
+  private def getKernelsGradient(
+      layerError: Array[BDM[Double]],
+      input: Array[BDM[Double]]): Array[Array[BDM[Double]]] = {
     val mapNum: Int = this.getOutMapNum
-    val lastMapNum: Int = lastLayer.getOutMapNum
+    val lastMapNum: Int = input.length
     val delta = Array.ofDim[BDM[Double]](lastMapNum, mapNum)
     var j = 0
     while (j < mapNum) {
       var i = 0
       while (i < lastMapNum) {
         val error = layerError(j)
-        val deltaKernel = CNN.convnValid(lastOutput(i), error)
+        val deltaKernel = CNN.convnValid(input(i), error)
         delta(i)(j) = deltaKernel
         i += 1
       }
@@ -270,8 +266,6 @@ class ConvCNNLayer private[neuralNetwork] extends CNNLayer{
   }
 }
 
-
-
 class SampCNNLayer private[neuralNetwork] extends CNNLayer{
   private var scaleSize: Scale = null
   this.layerType = "samp"
@@ -282,7 +276,7 @@ class SampCNNLayer private[neuralNetwork] extends CNNLayer{
     this
   }
 
-  override def eval(input: Array[BDM[Double]]): Array[BDM[Double]] = {
+  override def forward(input: Array[BDM[Double]]): Array[BDM[Double]] = {
     val lastMapNum: Int = input.length
     val output = new Array[BDM[Double]](lastMapNum)
     var i: Int = 0
@@ -295,52 +289,28 @@ class SampCNNLayer private[neuralNetwork] extends CNNLayer{
     output
   }
 
-  override def prevDelta(nextLayer: CNNLayer,
-                         nextLayerError: Array[BDM[Double]],
-                         layerOutput: Array[BDM[Double]]): Array[BDM[Double]] = {
-    val mapNum: Int = this.getOutMapNum
-    val nextMapNum: Int = nextLayer.getOutMapNum
+  override def prevDelt(
+      nextdelta: Array[BDM[Double]],
+      layerInput: Array[BDM[Double]]): Array[BDM[Double]] = {
+    val mapNum: Int = layerInput.length
     val errors = new Array[BDM[Double]](mapNum)
-    var i = 0
-    while (i < mapNum) {
-      var sum: BDM[Double] = null // sum for every kernel
-      var j = 0
-      while (j < nextMapNum) {
-        val nextError = nextLayerError(j)
-        val kernel = nextLayer.asInstanceOf[ConvCNNLayer].getKernel(i, j)
-        // rotate kernel by 180 degrees and get full convolution
-        if (sum == null) {
-          sum = CNN.convnFull(nextError, flipud(fliplr(kernel)))
-        }
-        else {
-          sum += CNN.convnFull(nextError, flipud(fliplr(kernel)))
-        }
-        j += 1
-      }
-      errors(i) = sum
-      i += 1
+    var m: Int = 0
+    val scale: Scale = this.getScaleSize
+    while (m < mapNum) {
+      val nextError: BDM[Double] = nextdelta(m)
+      val map: BDM[Double] = layerInput(m)
+      var outMatrix: BDM[Double] = (1.0 - map)
+      outMatrix = map :* outMatrix
+      outMatrix = outMatrix :* CNN.kronecker(nextError, scale)
+      errors(m) = outMatrix
+      m += 1
     }
     errors
   }
 
   override def grad(
-           lastLayer: CNNLayer,
            layerError: Array[BDM[Double]],
            lastOutput: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double]) ={
     return null
-  }
-}
-
-class OutputCNNLayer private[neuralNetwork] extends ConvCNNLayer{
-  this.layerType = "output"
-  /**
-   * kernel size for output layer is equal to map size of last layer
-   *
-   * @param frontMapNum
-   * @param size
-   */
-  private[neuralNetwork] def initOutputKernels(frontMapNum: Int, size: Scale) {
-    this.setKernelSize(size)
-    this.initKernel(frontMapNum)
   }
 }
