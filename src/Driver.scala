@@ -27,5 +27,4 @@ object Driver {
     cnn.trainOneByOne(data)
     println("Training time: " + (System.nanoTime() - start) / 1e9)
   }
-
 }
