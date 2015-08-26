@@ -18,7 +18,7 @@ package org.apache.spark.mllib.neuralNetwork
 
 import java.io.Serializable
 
-import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, sum, flipud, fliplr}
+import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, fliplr, flipud, sum}
 import breeze.numerics._
 
 object CNNLayer {
@@ -100,34 +100,19 @@ abstract class CNNLayer private[neuralNetwork] extends Serializable {
 
   def getType: String = layerType
 
-  def forward(input: Array[BDM[Double]]): Array[BDM[Double]]
+  def forward(input: Array[BDM[Double]]): Array[BDM[Double]] = input
 
-  def prevDelt(
+  def prevDelta(
       nextDelta: Array[BDM[Double]],
-      input: Array[BDM[Double]]): Array[BDM[Double]]
+      input: Array[BDM[Double]]): Array[BDM[Double]] = null
 
   def grad(
     delta: Array[BDM[Double]],
-    layerInput: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double])
+    layerInput: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double]) = null
 }
 
 class InputCNNLayer extends CNNLayer{
   this.layerType = "input"
-
-  override def forward(input: Array[BDM[Double]]): Array[BDM[Double]] = {
-    input
-  }
-
-  override def prevDelt(nextdelta: Array[BDM[Double]],
-                         input: Array[BDM[Double]]): Array[BDM[Double]] = {
-    throw new RuntimeException("should not be invoked")
-  }
-
-  override def grad(
-           layerError: Array[BDM[Double]],
-           lastOutput: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double]) ={
-    return null
-  }
 }
 
 class ConvCNNLayer private[neuralNetwork] extends CNNLayer{
@@ -187,7 +172,7 @@ class ConvCNNLayer private[neuralNetwork] extends CNNLayer{
     output
   }
 
-  override def prevDelt(
+  override def prevDelta(
       nextDelta: Array[BDM[Double]],
       layerInput: Array[BDM[Double]]): Array[BDM[Double]] = {
 
@@ -289,15 +274,15 @@ class SampCNNLayer private[neuralNetwork] extends CNNLayer{
     output
   }
 
-  override def prevDelt(
-      nextdelta: Array[BDM[Double]],
+  override def prevDelta(
+      nextDelta: Array[BDM[Double]],
       layerInput: Array[BDM[Double]]): Array[BDM[Double]] = {
     val mapNum: Int = layerInput.length
     val errors = new Array[BDM[Double]](mapNum)
     var m: Int = 0
     val scale: Scale = this.getScaleSize
     while (m < mapNum) {
-      val nextError: BDM[Double] = nextdelta(m)
+      val nextError: BDM[Double] = nextDelta(m)
       val map: BDM[Double] = layerInput(m)
       var outMatrix: BDM[Double] = (1.0 - map)
       outMatrix = map :* outMatrix
@@ -308,9 +293,4 @@ class SampCNNLayer private[neuralNetwork] extends CNNLayer{
     errors
   }
 
-  override def grad(
-           layerError: Array[BDM[Double]],
-           lastOutput: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double]) ={
-    return null
-  }
 }

@@ -19,7 +19,6 @@ package org.apache.spark.mllib.neuralNetwork
 import java.util.{ArrayList, List}
 
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, _}
-import breeze.numerics.sigmoid
 import org.apache.spark.Logging
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.regression.LabeledPoint
@@ -233,7 +232,7 @@ class CNN private extends Serializable with Logging{
     var l: Int = layerNum - 2
     while (l > 0) {
       val layer: CNNLayer = layers.get(l + 1)
-      errors(l) = layer.prevDelt(errors(l + 1), outputs(l))
+      errors(l) = layer.prevDelta(errors(l + 1), outputs(l))
       l -= 1
     }
     (result._1, errors)
