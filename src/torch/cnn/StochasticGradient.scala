@@ -52,16 +52,17 @@ class StochasticGradient(topology: Module, criterion: Criterion) extends Seriali
      var totalCount = 0
      var totalRight = 0
      while (t < maxIterations) {
-       val (gradientSum, count) = trainSet
+       val (gradientSum, right, count) = trainSet
          .sample(false, batchSize.toDouble/trainSize, 42 + t)
-         .treeAggregate((gZero, 0))(
+         .treeAggregate((gZero, 0, 0))(
            seqOp = (c, v) => {
-             val (right, result) = train(v)
-             val gradient = result
-             (StochasticGradient.combineGradient(c._1, gradient), c._2 + 1)
+             val result = train(v)
+             val gradient = result._2
+             val right = if (result._1) 1 else 0
+             (StochasticGradient.combineGradient(c._1, gradient), c._2 + right, c._3 + 1)
            },
            combOp = (c1, c2) => {
-             (StochasticGradient.combineGradient(c1._1, c2._1), c1._2 + c2._2)
+             (StochasticGradient.combineGradient(c1._1, c2._1), c1._2 + c2._2, c1._3 + c2._3)
            })
 
        t += 1
@@ -72,7 +73,9 @@ class StochasticGradient(topology: Module, criterion: Criterion) extends Seriali
            ALPHA = 0.001 + ALPHA * 0.9
          }
          totalCount += count
+         totalRight += right
          if (totalCount > 10000){
+           println(s"precision $totalRight/$totalCount = $p")
            totalCount = 0
            totalRight = 0
          }

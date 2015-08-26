@@ -8,7 +8,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 /**
  * Created by yuhaoyan on 8/25/2015.
  */
-object Driver {
+object TorchDriver {
 
   def main(args: Array[String]) {
 
@@ -29,7 +29,7 @@ object Driver {
       .map(arr => new LabeledPoint(arr(784), Vectors.dense(arr.slice(0, 784))))
 
     val start = System.nanoTime()
-    trainer.trainOneByOne(data)
+    trainer.train(data)
     println("Training time: " + (System.nanoTime() - start) / 1e9)
   }
 }
