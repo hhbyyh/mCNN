@@ -119,14 +119,17 @@ class CNN private extends Serializable with Logging{
         val gradient: Array[(Array[Array[BDM[Double]]], Array[Double])] = result._2
         updateParams(gradient, 1)
         i += 1
-        if(i % 1000 == 0) println(s"$t:\t$i\tsamplesprecision $right/$count = " + 1.0 * right / count)
+        if(i % 1000 == 0){
+          println(s"$t:\t$i\tsamples precision $right/$count = " + 1.0 * right / count)
+          right = 0
+          count = 0
+        }
       }
       val p = 1.0 * right / count
       if (t % 10 == 1 && p > 0.96) {
         ALPHA = 0.001 + ALPHA * 0.9
       }
       t += 1
-      println(s"precision $right/$count = $p")
     }
   }
 
