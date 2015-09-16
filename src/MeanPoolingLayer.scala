@@ -18,7 +18,7 @@
 package org.apache.spark.ml.ann
 
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, Vector => BV, axpy => Baxpy, sum => Bsum, _}
-import org.apache.spark.mllib.linalg.Vector
+import org.apache.spark.mllib.linalg.{Vectors, Vector}
 
 /**
  * Layer properties of affine transformations, that is y=A*x+b
@@ -28,9 +28,7 @@ private[ann] class MeanPoolingLayer(val poolingSize: Scale, val inputSize: Scale
 
   override def getInstance(weights: Vector, position: Int): LayerModel = getInstance(0L)
 
-  override def getInstance(seed: Long): LayerModel =
-    MeanPoolingLayerModel(this, inputSize)
-
+  override def getInstance(seed: Long = 11L): LayerModel = MeanPoolingLayerModel(this, inputSize)
 }
 
 
@@ -48,11 +46,11 @@ private[ann] class MeanPoolingLayerModel private(
   type Tensor2D = Array[Double]
   val outputSize = inputSize.divide(poolingSize)
 
-  override val size = weights().size
+  override val size = 0
 
   override def eval(data: BDM[Double]): BDM[Double] = {
     val inputMaps = new Array[BDM[Double]](data.cols)
-    for(i <- 0 to data.cols){
+    for(i <- 0 until data.cols){
       val v = data(::, i)
       inputMaps(i) = new BDM(inputSize.x, inputSize.y, v.data)
     }
@@ -67,7 +65,7 @@ private[ann] class MeanPoolingLayerModel private(
       i += 1
     }
     val outBDM = new BDM[Double](outputSize.x * outputSize.y, data.cols)
-    for(i <- 0 to data.cols){
+    for(i <- 0 until data.cols){
       outBDM(::, i) := output(i).toDenseVector
     }
     outBDM
@@ -75,46 +73,44 @@ private[ann] class MeanPoolingLayerModel private(
 
   override def prevDelta(nextDelta: BDM[Double], input: BDM[Double]): BDM[Double] = {
     val inputMaps = new Array[BDM[Double]](input.cols)
-    for(i <- 0 to input.cols){
+    for(i <- 0 until input.cols){
       val v = input(::, i)
       inputMaps(i) = new BDM(inputSize.x, inputSize.y, v.data)
     }
 
     val nextDeltaMaps = new Array[BDM[Double]](input.cols)
-    for(i <- 0 to input.cols){
+    for(i <- 0 until input.cols){
       val v = nextDelta(::, i)
       nextDeltaMaps(i) = new BDM(outputSize.x, outputSize.y, v.data)
     }
 
-    val input3D = input.asInstanceOf[Tensor3D]
-
-    val mapNum: Int = input3D.length
+    val mapNum: Int = inputMaps.length
     val errors = new Array[BDM[Double]](mapNum)
     var m: Int = 0
     val scale: Scale = this.poolingSize
     while (m < mapNum) {
       val nextError: BDM[Double] = nextDeltaMaps(m)
-      val map: BDM[Double] = input3D(m)
+      val map: BDM[Double] = inputMaps(m)
       var outMatrix: BDM[Double] = (1.0 - map)
       outMatrix = map :* outMatrix
       outMatrix = outMatrix :* MeanPoolingLayerModel.kronecker(nextError, scale)
       errors(m) = outMatrix
       m += 1
     }
-    errors
 
     val outBDM = new BDM[Double](inputSize.x * inputSize.y, input.cols)
-    for(i <- 0 to input.cols){
+    for(i <- 0 until input.cols){
       outBDM(::, i) := errors(i).toDenseVector
     }
     outBDM
   }
 
   override def grad(delta: BDM[Double], input: BDM[Double]): Array[Double] = {
-    null
+    new Array[Double](0)
   }
 
-  override def weights(): Vector = null
+  override def weights(): Vector = Vectors.dense(new Array[Double](0))
+
 
 }
 
@@ -137,7 +133,7 @@ private[ann] object MeanPoolingLayerModel {
    *
    * @param matrix
    */
-  private[nn] def avgPooling(matrix: BDM[Double], scale: Scale): BDM[Double] = {
+  private[ann] def avgPooling(matrix: BDM[Double], scale: Scale): BDM[Double] = {
     val m: Int = matrix.rows
     val n: Int = matrix.cols
     val scaleX = scale.x
@@ -171,7 +167,7 @@ private[ann] object MeanPoolingLayerModel {
     outMatrix
   }
 
-  private[nn] def kronecker(matrix: BDM[Double], scale: Scale): BDM[Double] = {
+  private[ann] def kronecker(matrix: BDM[Double], scale: Scale): BDM[Double] = {
     val ones = BDM.ones[Double](scale.x, scale.y)
     kron(matrix, ones)
   }

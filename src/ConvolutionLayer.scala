@@ -14,7 +14,6 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-
 package org.apache.spark.ml.ann
 
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, sum, flipud, fliplr}
@@ -23,7 +22,7 @@ import org.apache.spark.mllib.linalg.{DenseVector, Vector}
 import org.apache.spark.util.random.XORShiftRandom
 
 /**
-* Layer properties of affine transformations, that is y=A*x+b
+* ConvolutionLayer
 * @param numInMap number of inputs
 * @param numOutMap number of outputs
 */
@@ -44,7 +43,7 @@ private[ann] class ConvolutionLayer(
 
 
 /**
-* Model of Affine layer y=A*x+b
+* ConvolutionLayerModel
 * @param kernels kernels (matrix A)
 * @param bias bias (vector b)
 */
@@ -62,8 +61,8 @@ private[ann] class ConvolutionLayerModel private(
   require(inMapNum > 0)
   require(outMapNum > 0)
   require(kernels.length == inMapNum)
-  require(kernels(0).length == inMapNum)
-  val outputSize = new Scale(kernels(0)(0).rows, kernels(0)(0).cols)
+  require(kernels(0).length == outMapNum)
+  val outputSize = inputSize.subtract(new Scale(kernels(0)(0).rows, kernels(0)(0).cols), 1)
 
   override val size = weights().size
 
@@ -71,7 +70,7 @@ private[ann] class ConvolutionLayerModel private(
     require(data.cols == inMapNum)
 
     val inputMaps = new Array[BDM[Double]](inMapNum)
-    for(i <- 0 to inMapNum){
+    for(i <- 0 until inMapNum){
       val v = data(::, i)
       inputMaps(i) = new BDM(inputSize.x, inputSize.y, v.data)
     }
@@ -98,7 +97,7 @@ private[ann] class ConvolutionLayerModel private(
       j += 1
     }
     val outBDM = new BDM[Double](outputSize.x * outputSize.y, outMapNum)
-    for(i <- 0 to outMapNum){
+    for(i <- 0 until outMapNum){
       outBDM(::, i) := output(i).toDenseVector
     }
     outBDM
@@ -106,14 +105,14 @@ private[ann] class ConvolutionLayerModel private(
 
   override def prevDelta(nextDelta: BDM[Double], input: BDM[Double]): BDM[Double] = {
     val inputMaps = new Array[BDM[Double]](inMapNum)
-    for(i <- 0 to inMapNum){
+    for(i <- 0 until inMapNum){
       val v = input(::, i)
       inputMaps(i) = new BDM(inputSize.x, inputSize.y, v.data)
     }
 
     require(nextDelta.cols == outMapNum)
     val nextDeltaMaps = new Array[BDM[Double]](outMapNum)
-    for(i <- 0 to outMapNum){
+    for(i <- 0 until outMapNum){
       val v = nextDelta(::, i)
       nextDeltaMaps(i) = new BDM(outputSize.x, outputSize.y, v.data)
     }
@@ -141,7 +140,7 @@ private[ann] class ConvolutionLayerModel private(
     }
 
     val outBDM = new BDM[Double](inputSize.x * inputSize.y, inMapNum)
-    for(i <- 0 to outMapNum){
+    for(i <- 0 until inMapNum){
       outBDM(::, i) := errors(i).toDenseVector
     }
     outBDM
@@ -149,13 +148,13 @@ private[ann] class ConvolutionLayerModel private(
 
   override def grad(delta: BDM[Double], input: BDM[Double]): Array[Double] = {
     val inputMaps = new Array[BDM[Double]](inMapNum)
-    for(i <- 0 to inMapNum){
+    for(i <- 0 until inMapNum){
       val v = input(::, i)
       inputMaps(i) = new BDM(inputSize.x, inputSize.y, v.data)
     }
 
     val deltaMaps = new Array[BDM[Double]](outMapNum)
-    for(i <- 0 to outMapNum){
+    for(i <- 0 until outMapNum){
       val v = delta(::, i)
       deltaMaps(i) = new BDM(outputSize.x, outputSize.y, v.data)
     }
@@ -175,7 +174,7 @@ private[ann] class ConvolutionLayerModel private(
     while(i < rows){
       var j = 0
       while(j < cols){
-        System.arraycopy(kernels(i)(j), 0, result, offset, m)
+        System.arraycopy(kernels(i)(j).toArray, 0, result, offset, m)
         offset += m
         j += 1
       }
@@ -242,8 +241,11 @@ private[ann] object ConvolutionLayerModel {
    */
   def apply(layer: ConvolutionLayer, weights: Vector, position: Int): ConvolutionLayerModel = {
     val (w, b) = unroll(weights, position,
-      layer.numInMap, layer.numOutMap, layer.kernelSize, layer.inputSize)
-    new ConvolutionLayerModel(w, b)
+      layer.numInMap,
+      layer.numOutMap,
+      layer.kernelSize,
+      layer.inputSize)
+    new ConvolutionLayerModel(layer.numInMap, layer.numOutMap, w, b, layer.inputSize)
   }
 
   /**
@@ -252,9 +254,14 @@ private[ann] object ConvolutionLayerModel {
    * @param seed seed
    * @return model of Affine layer
    */
-  def apply(layer: ConvolutionLayer, seed: Long): AffineLayerModel = {
-    val (w, b) = randomWeights(layer.numIn, layer.numOut, seed)
-    new AffineLayerModel(w, b)
+  def apply(layer: ConvolutionLayer, seed: Long): ConvolutionLayerModel = {
+    val bias = new Array[Double](layer.numOutMap)
+    val kernel = Array.ofDim[BDM[Double]](layer.numInMap, layer.numOutMap)
+    for (i <- 0 until layer.numInMap)
+      for (j <- 0 until layer.numOutMap)
+        kernel(i)(j) = (BDM.rand[Double](layer.kernelSize.x, layer.kernelSize.y) - 0.05) / 10.0
+
+    new ConvolutionLayerModel(layer.numInMap, layer.numOutMap, kernel, bias, layer.inputSize)
   }
 
   /**
@@ -273,15 +280,19 @@ private[ann] object ConvolutionLayerModel {
       kernelSize: Scale,
       inputSize: Scale): (Array[Array[BDM[Double]]], Array[Double]) = {
     val weightsCopy = weights.toArray
-    // TODO: the array is not copied to BDMs, make sure this is OK!
-    val a = new BDM[Double](numOut, numIn, weightsCopy, position)
-    val b = new BDV[Double](weightsCopy, position + (numOut * numIn), 1, numOut)
+    var offset = position
+    val kernels = new Array[Array[BDM[Double]]](numIn)
+    for(i <- 0 until numIn){
+      kernels(i) = new Array[BDM[Double]](numOut)
+      for(j <- 0 until numOut){
+        val a = new BDM[Double](kernelSize.x, kernelSize.y, weightsCopy, offset)
+        kernels(i)(j) = a
+        offset += kernelSize.x * kernelSize.y
+      }
+    }
 
-
-
-
-
-    (a, b)
+    val b = new BDV[Double](weightsCopy, offset, 1, numOut).toArray
+    (kernels, b)
   }
 
   /**

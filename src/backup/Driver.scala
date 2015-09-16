@@ -1,11 +1,11 @@
+package org.apache.spark.mllib.neuralNetwork
+
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.{SparkContext, SparkConf}
-import org.apache.spark.mllib.neuralNetwork.{CNN, Scale, CNNLayer, CNNTopology}
+import org.apache.spark.{SparkConf, SparkContext}
 
-object MnistCSVDriver {
-
+object Driver {
   def main(args: Array[String]) {
     val topology = new CNNTopology
     topology.addLayer(CNNLayer.buildInputLayer(new Scale(28, 28)))
@@ -20,13 +20,12 @@ object MnistCSVDriver {
     Logger.getLogger("akka").setLevel(Level.WARN)
     val conf = new SparkConf().setMaster("local[8]").setAppName("ttt")
     val sc = new SparkContext(conf)
-    val lines = sc.textFile("dataset/mnist/mnist_train.csv", 8)
+    val lines = sc.textFile("dataset/train.format", 8)
     val data = lines.map(line => line.split(",")).map(arr => arr.map(_.toDouble))
-      .map(arr => new LabeledPoint(arr(0), Vectors.dense(arr.slice(1, 785).map(v => if(v > 0) 1.0 else 0))))
+      .map(arr => new LabeledPoint(arr(784), Vectors.dense(arr.slice(0, 784))))
 
     val start = System.nanoTime()
     cnn.trainOneByOne(data)
     println("Training time: " + (System.nanoTime() - start) / 1e9)
   }
-
 }
