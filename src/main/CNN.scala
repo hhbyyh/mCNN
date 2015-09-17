@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.mllib.neuralNetwork
+package hhbyyh.mCNN
 
 import java.util.{ArrayList, List}
 
@@ -69,12 +69,12 @@ class CNN private extends Serializable with Logging{
       layer.getType match {
         case "input" =>
         case "conv" =>
-          val convLayer = layer.asInstanceOf[ConvCNNLayer]
+          val convLayer = layer.asInstanceOf[ConvolutionLayer]
           convLayer.setMapSize(frontLayer.getMapSize.subtract(convLayer.getKernelSize, 1))
           convLayer.initKernel(frontMapNum)
           convLayer.initBias(frontMapNum)
         case "samp" =>
-          val sampLayer = layer.asInstanceOf[SampCNNLayer]
+          val sampLayer = layer.asInstanceOf[MeanPoolingLayer]
           sampLayer.setOutMapNum(frontMapNum)
           sampLayer.setMapSize(frontLayer.getMapSize.divide(sampLayer.getScaleSize))
         case _ => throw new UnsupportedOperationException(s"wrong type")
@@ -263,8 +263,8 @@ class CNN private extends Serializable with Logging{
       val layer: CNNLayer = layers.get(l)
       layer.getType match {
         case "conv" =>
-          updateKernels(layer.asInstanceOf[ConvCNNLayer], gradient(l)._1, batchSize)
-          updateBias(layer.asInstanceOf[ConvCNNLayer], gradient(l)._2, batchSize)
+          updateKernels(layer.asInstanceOf[ConvolutionLayer], gradient(l)._1, batchSize)
+          updateBias(layer.asInstanceOf[ConvolutionLayer], gradient(l)._2, batchSize)
         case _ =>
       }
       l += 1
@@ -272,7 +272,7 @@ class CNN private extends Serializable with Logging{
   }
 
   private def updateKernels(
-      layer: ConvCNNLayer,
+      layer: ConvolutionLayer,
       gradient: Array[Array[BDM[Double]]], batchSize: Int): Unit = {
     val len = gradient.length
     val width = gradient(0).length
@@ -289,7 +289,7 @@ class CNN private extends Serializable with Logging{
     }
   }
 
-  private def updateBias(layer: ConvCNNLayer, gradient: Array[Double], batchSize: Int): Unit = {
+  private def updateBias(layer: ConvolutionLayer, gradient: Array[Double], batchSize: Int): Unit = {
     val gv = new BDV[Double](gradient)
     layer.getBias += gv * ALPHA / batchSize.toDouble
   }
@@ -346,7 +346,7 @@ class CNN private extends Serializable with Logging{
 
 object CNN {
 
-  private[neuralNetwork] def kronecker(matrix: BDM[Double], scale: Scale): BDM[Double] = {
+  private[mCNN] def kronecker(matrix: BDM[Double], scale: Scale): BDM[Double] = {
     val ones = BDM.ones[Double](scale.x, scale.y)
     kron(matrix, ones)
   }
@@ -356,7 +356,7 @@ object CNN {
    *
    * @param matrix
    */
-  private[neuralNetwork] def scaleMatrix(matrix: BDM[Double], scale: Scale): BDM[Double] = {
+  private[mCNN] def scaleMatrix(matrix: BDM[Double], scale: Scale): BDM[Double] = {
     val m: Int = matrix.rows
     val n: Int = matrix.cols
     val sm: Int = m / scale.x
@@ -392,7 +392,7 @@ object CNN {
    * @param kernel
    * @return
    */
-  private[neuralNetwork] def convnFull(matrix: BDM[Double], kernel: BDM[Double]): BDM[Double] = {
+  private[mCNN] def convnFull(matrix: BDM[Double], kernel: BDM[Double]): BDM[Double] = {
     val m: Int = matrix.rows
     val n: Int = matrix.cols
     val km: Int = kernel.rows
@@ -417,7 +417,7 @@ object CNN {
    * @param kernel
    * @return
    */
-  private[neuralNetwork] def convnValid(matrix: BDM[Double], kernel: BDM[Double]): BDM[Double] = {
+  private[mCNN] def convnValid(matrix: BDM[Double], kernel: BDM[Double]): BDM[Double] = {
     val m: Int = matrix.rows
     val n: Int = matrix.cols
     val km: Int = kernel.rows
@@ -442,7 +442,7 @@ object CNN {
     outMatrix
   }
 
-  private[neuralNetwork] def getMaxIndex(out: Array[Double]): Int = {
+  private[mCNN] def getMaxIndex(out: Array[Double]): Int = {
     var max: Double = out(0)
     var index: Int = 0
     var i: Int = 1
@@ -456,7 +456,7 @@ object CNN {
     index
   }
 
-  private[neuralNetwork] def combineGradient(
+  private[mCNN] def combineGradient(
       g1: Array[(Array[Array[BDM[Double]]], Array[Double])],
       g2: Array[(Array[Array[BDM[Double]]], Array[Double])]):
       Array[(Array[Array[BDM[Double]]], Array[Double])] = {

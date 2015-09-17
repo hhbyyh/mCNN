@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.mllib.neuralNetwork
+package hhbyyh.mCNN
 
 import java.io.Serializable
 
@@ -31,14 +31,14 @@ object CNNLayer {
   }
 
   def buildConvLayer(outMapNum: Int, kernelSize: Scale): CNNLayer = {
-    val layer = new ConvCNNLayer
+    val layer = new ConvolutionLayer
     layer.mapNum = outMapNum
     layer.setKernelSize(kernelSize)
     layer
   }
 
   def buildSampLayer(scaleSize: Scale): CNNLayer = {
-    val layer = new SampCNNLayer
+    val layer = new MeanPoolingLayer
     layer.setScaleSize(scaleSize)
     layer
   }
@@ -55,7 +55,7 @@ class Scale(var x: Int, var y: Int) extends Serializable {
    * @param scaleSize
    * @return
    */
-  private[neuralNetwork] def divide(scaleSize: Scale): Scale = {
+  private[mCNN] def divide(scaleSize: Scale): Scale = {
     val x: Int = this.x / scaleSize.x
     val y: Int = this.y / scaleSize.y
     if (x * scaleSize.x != this.x || y * scaleSize.y != this.y){
@@ -64,7 +64,7 @@ class Scale(var x: Int, var y: Int) extends Serializable {
     new Scale(x, y)
   }
 
-  private[neuralNetwork] def multiply(scaleSize: Scale): Scale = {
+  private[mCNN] def multiply(scaleSize: Scale): Scale = {
     val x: Int = this.x * scaleSize.x
     val y: Int = this.y * scaleSize.y
     new Scale(x, y)
@@ -73,14 +73,14 @@ class Scale(var x: Int, var y: Int) extends Serializable {
   /**
    * subtract a scale and add append
    */
-  private[neuralNetwork] def subtract(other: Scale, append: Int): Scale = {
+  private[mCNN] def subtract(other: Scale, append: Int): Scale = {
     val x: Int = this.x - other.x + append
     val y: Int = this.y - other.y + append
     new Scale(x, y)
   }
 }
 
-abstract class CNNLayer private[neuralNetwork] extends Serializable {
+abstract class CNNLayer private[mCNN] extends Serializable {
 
   protected var layerType: String = null
   protected var mapNum: Int = 0
@@ -115,17 +115,17 @@ class InputCNNLayer extends CNNLayer{
   this.layerType = "input"
 }
 
-class ConvCNNLayer private[neuralNetwork] extends CNNLayer{
+class ConvolutionLayer private[mCNN] extends CNNLayer{
   private var bias: BDV[Double] = null
   private var kernel: Array[Array[BDM[Double]]] = null
   private var kernelSize: Scale = null
 
   this.layerType = "conv"
-  private[neuralNetwork] def initBias(frontMapNum: Int) {
+  private[mCNN] def initBias(frontMapNum: Int) {
     this.bias = BDV.zeros[Double](mapNum)
   }
 
-  private[neuralNetwork] def initKernel(frontMapNum: Int) {
+  private[mCNN] def initKernel(frontMapNum: Int) {
     this.kernel = Array.ofDim[BDM[Double]](frontMapNum, mapNum)
     for (i <- 0 until frontMapNum)
       for (j <- 0 until mapNum)
@@ -251,7 +251,7 @@ class ConvCNNLayer private[neuralNetwork] extends CNNLayer{
   }
 }
 
-class SampCNNLayer private[neuralNetwork] extends CNNLayer{
+class MeanPoolingLayer private[mCNN] extends CNNLayer{
   private var scaleSize: Scale = null
   this.layerType = "samp"
 

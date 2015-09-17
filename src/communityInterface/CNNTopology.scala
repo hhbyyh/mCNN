@@ -4,7 +4,6 @@ package org.apache.spark.ml.ann
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.linalg.{Vectors, Vector}
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, Vector => BV, _}
-import org.apache.spark.mllib.neuralNetwork.CNNLayer
 import org.apache.spark.mllib.optimization.Updater
 import org.apache.spark.mllib.regression.LabeledPoint
 
