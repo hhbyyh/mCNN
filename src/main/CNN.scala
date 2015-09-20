@@ -20,13 +20,11 @@ import java.util.{ArrayList, List}
 
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, _}
 import org.apache.spark.Logging
-import org.apache.spark.mllib.linalg.Vector
-import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.rdd.RDD
 
 /**
  * Builder class to define CNN layers structure
- * The second layer from the last can not be a conv layer,
+ * The second layer from the last can not be a convolution layer,
  * Typical layers: input, conv, samp, conv, samp
  */
 class CNNTopology {
@@ -57,30 +55,6 @@ class CNN private extends Serializable with Logging{
     this()
     layers = layerBuilder.mLayers
     layerNum = layers.size
-    setup
-  }
-
-  def setup {
-    var i: Int = 1
-    while (i < layers.size) {
-      val layer: CNNLayer = layers.get(i)
-      val frontLayer: CNNLayer = layers.get(i - 1)
-      val frontMapNum: Int = frontLayer.getOutMapNum
-      layer.getType match {
-        case "input" =>
-        case "conv" =>
-          val convLayer = layer.asInstanceOf[ConvolutionLayer]
-          convLayer.setMapSize(frontLayer.getMapSize.subtract(convLayer.getKernelSize, 1))
-          convLayer.initKernel(frontMapNum)
-          convLayer.initBias(frontMapNum)
-        case "samp" =>
-          val sampLayer = layer.asInstanceOf[MeanPoolingLayer]
-          sampLayer.setOutMapNum(frontMapNum)
-          sampLayer.setMapSize(frontLayer.getMapSize.divide(sampLayer.getScaleSize))
-        case _ => throw new UnsupportedOperationException(s"wrong type")
-      }
-      i += 1
-    }
   }
 
   def setMiniBatchSize(batchSize: Int): this.type = {
@@ -102,7 +76,7 @@ class CNN private extends Serializable with Logging{
     this
   }
 
-  def trainOneByOne(trainSet: RDD[LabeledPoint]) {
+  def trainOneByOne(trainSet: RDD[(Double, Array[BDM[Double]])]) {
     var t = 0
     val trainSize = trainSet.count().toInt
     val dataArr = trainSet.collect()
@@ -133,7 +107,7 @@ class CNN private extends Serializable with Logging{
     }
   }
 
-  def train(trainSet: RDD[LabeledPoint]) {
+  def train(trainSet: RDD[(Double, Array[BDM[Double]])]) {
     var t = 0
     val trainSize = trainSet.count().toInt
     val gZero = train(trainSet.first)._2
@@ -176,7 +150,7 @@ class CNN private extends Serializable with Logging{
     }
   }
 
-  def predict(testSet: RDD[Vector]): RDD[Int] = {
+  def predict(testSet: RDD[Array[BDM[Double]]]): RDD[Int] = {
     testSet.map(record => {
       val outputs: Array[Array[BDM[Double]]] = forward(record)
       val outputLayer = layers.get(layerNum - 1)
@@ -195,10 +169,10 @@ class CNN private extends Serializable with Logging{
    *
    * @return (isRight, gradient)
    */
-  private def train(record: LabeledPoint)
+  private def train(record: (Double, Array[BDM[Double]]))
     : (Boolean, Array[(Array[Array[BDM[Double]]], Array[Double])]) = {
-    val outputs = forward(record.features)
-    val (right, errors) = backPropagation(record, outputs)
+    val outputs = forward(record._2)
+    val (right, errors) = backPropagation(record._1, outputs)
     val gradient = getGradient(outputs, errors)
     (right, gradient)
   }
@@ -208,13 +182,14 @@ class CNN private extends Serializable with Logging{
    *
    * @param record
    */
-  private def forward(record: Vector): Array[Array[BDM[Double]]] = {
-    val outputs = new Array[Array[BDM[Double]]](layers.size)
-    outputs(0) = Vector2Tensor(record)
-    var l: Int = 1
+  private def forward(record: Array[BDM[Double]]): Array[Array[BDM[Double]]] = {
+    // outputs(i + 1) contains output for layer(i)
+    val outputs = new Array[Array[BDM[Double]]](layers.size + 1)
+    outputs(0) = record
+    var l: Int = 0
     while (l < layers.size) {
       val layer: CNNLayer = layers.get(l)
-      outputs(l) = layer.forward(outputs(l - 1))
+      outputs(l + 1) = layer.forward(outputs(l))
       l += 1
     }
     outputs
@@ -226,16 +201,16 @@ class CNN private extends Serializable with Logging{
    * @return (right, errors for all layers)
    */
   private def backPropagation(
-      record: LabeledPoint,
+      label: Double,
       outputs: Array[Array[BDM[Double]]])
   : (Boolean, Array[Array[BDM[Double]]]) = {
-    val errors = new Array[Array[BDM[Double]]](layers.size)
-    val result = setOutLayerErrors(record, outputs(layerNum - 1))
-    errors(layerNum - 1) = result._2
+    val errors = new Array[Array[BDM[Double]]](layers.size + 1)
+    val result = setOutLayerErrors(label.toInt, outputs(layerNum))
+    errors(layerNum) = result._2
     var l: Int = layerNum - 2
-    while (l > 0) {
+    while (l >= 0) {
       val layer: CNNLayer = layers.get(l + 1)
-      errors(l) = layer.prevDelta(errors(l + 1), outputs(l))
+      errors(l + 1) = layer.prevDelta(errors(l + 2), outputs(l + 1))
       l -= 1
     }
     (result._1, errors)
@@ -243,13 +218,12 @@ class CNN private extends Serializable with Logging{
 
   private def getGradient(
       outputs: Array[Array[BDM[Double]]],
-      errors: Array[Array[BDM[Double]]]) : Array[(Array[Array[BDM[Double]]], Array[Double])] = {
-    var l: Int = 1
+      errors: Array[Array[BDM[Double]]]): Array[(Array[Array[BDM[Double]]], Array[Double])] = {
+    var l: Int = 0
     val gradient = new Array[(Array[Array[BDM[Double]]], Array[Double])](layerNum)
     while (l < layerNum) {
       val layer: CNNLayer = layers.get(l)
-      val lastLayer: CNNLayer = layers.get(l - 1)
-      gradient(l) = layer.grad(errors(l), outputs(l - 1))
+      gradient(l) = layer.grad(errors(l + 1), outputs(l))
       l += 1
     }
     gradient
@@ -258,14 +232,12 @@ class CNN private extends Serializable with Logging{
   private def updateParams(
       gradient: Array[(Array[Array[BDM[Double]]], Array[Double])],
       batchSize: Int): Unit = {
-    var l: Int = 1
+    var l: Int = 0
     while (l < layerNum) {
       val layer: CNNLayer = layers.get(l)
-      layer.getType match {
-        case "conv" =>
-          updateKernels(layer.asInstanceOf[ConvolutionLayer], gradient(l)._1, batchSize)
-          updateBias(layer.asInstanceOf[ConvolutionLayer], gradient(l)._2, batchSize)
-        case _ =>
+      if(layer.isInstanceOf[ConvolutionLayer]){
+        updateKernels(layer.asInstanceOf[ConvolutionLayer], gradient(l)._1, batchSize)
+        updateBias(layer.asInstanceOf[ConvolutionLayer], gradient(l)._2, batchSize)
       }
       l += 1
     }
@@ -297,18 +269,16 @@ class CNN private extends Serializable with Logging{
   /**
    * set errors for output layer
    *
-   * @param record
+   * @param label
    * @return
    */
   private def setOutLayerErrors(
-      record: LabeledPoint,
+      label: Int,
       output: Array[BDM[Double]]): (Boolean, Array[BDM[Double]]) = {
     val outputLayer: CNNLayer = layers.get(layerNum - 1)
     val mapNum: Int = outputLayer.getOutMapNum
     val target: Array[Double] = new Array[Double](mapNum)
     val outValues: Array[Double] = output.map(m => m(0, 0))
-
-    val label = record.label.toInt
     target(label) = 1
     val layerError: Array[BDM[Double]] = (0 until mapNum).map(i => {
       val errorMatrix = new BDM[Double](1, 1)
@@ -319,28 +289,7 @@ class CNN private extends Serializable with Logging{
     (label == outClass, layerError)
   }
 
-  /**
-   * set inlayer output
-   * @param record
-   */
-  private def Vector2Tensor(record: Vector): Array[BDM[Double]] = {
-    val inputLayer: CNNLayer = layers.get(0)
-    val mapSize = inputLayer.getMapSize
-    if (record.size != mapSize.x * mapSize.y) {
-      throw new RuntimeException("data size and map size mismatch!")
-    }
-    val m = new BDM[Double](mapSize.x, mapSize.y)
-    var i: Int = 0
-    while (i < mapSize.x) {
-      var j: Int = 0
-      while (j < mapSize.y) {
-        m(i, j) = record(mapSize.x * i + j)
-        j += 1
-      }
-      i += 1
-    }
-    Array(m)
-  }
+
 }
 
 
