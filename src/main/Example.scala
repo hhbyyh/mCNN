@@ -37,17 +37,24 @@ object Example {
     topology.addLayer(CNNLayer.buildConvolutionLayer(6, 12, new Scale(5, 5)))
     topology.addLayer(CNNLayer.buildMeanPoolingLayer(new Scale(2, 2)))
     topology.addLayer(CNNLayer.buildConvolutionLayer(12, 12, new Scale(4, 4)))
-    val cnn: CNN = new CNN(topology).setMaxIterations(1000).setMiniBatchSize(16)
+    val cnn: CNN = new CNN(topology).setMaxIterations(1).setMiniBatchSize(16)
     val start = System.nanoTime()
     cnn.trainOneByOne(data)
     println("Training time: " + (System.nanoTime() - start) / 1e9)
+
+    var right = 0
+    data.collect().foreach(record =>{
+      val result = cnn.predict(record._2)
+      right = right + (if(result == record._1) 1 else 0)
+    })
+    println(s"Predicting precision: $right, " + right.toDouble/(data.count()))
   }
 
   /**
    * set inlayer output
    * @param record
    */
-  private def Vector2Tensor(record: Vector): Array[BDM[Double]] = {
+  def Vector2Tensor(record: Vector): Array[BDM[Double]] = {
     val mapSize = new Scale(28, 28)
     val m = new BDM[Double](mapSize.x, mapSize.y)
     var i: Int = 0

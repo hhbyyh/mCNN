@@ -94,7 +94,7 @@ class CNN private extends Serializable with Logging{
         updateParams(gradient, 1)
         i += 1
         if(i % 1000 == 0){
-          println(s"$t:\t$i\tsamples precision $right/$count = " + 1.0 * right / count)
+          println(s"$t:\t$i\t samples precision $right/$count = " + 1.0 * right / count)
           right = 0
           count = 0
         }
@@ -149,18 +149,10 @@ class CNN private extends Serializable with Logging{
     }
   }
 
-  def predict(testSet: RDD[Array[BDM[Double]]]): RDD[Int] = {
-    testSet.map(record => {
-      val outputs: Array[Array[BDM[Double]]] = forward(record)
-      val outputLayer = layers.get(layerNum - 1)
-      val mapNum = outputLayer.asInstanceOf[ConvolutionLayer].getOutMapNum
-      val out = new Array[Double](mapNum)
-      for (m <- 0 until mapNum) {
-        val outMap = outputs(layerNum - 1)(m)
-        out(m) = outMap(0, 0)
-      }
-      CNN.getMaxIndex(out)
-    })
+  def predict(record: Array[BDM[Double]]): Int = {
+    val outputs: Array[Array[BDM[Double]]] = forward(record)
+    val outValues: Array[Double] = outputs(layerNum - 1).map(m => m(0, 0))
+    CNN.getMaxIndex(outValues)
   }
 
   /**
