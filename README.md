@@ -8,7 +8,8 @@ This documentation is for Spark 1.3+. Other version will probably work yet not t
 
 ## Features
 
-`mCNN` supports training of a Convolutional Neural Network. Currently `ConvolutionLayer`, `MeanPoolingLayer` and 'MaxPoolingLayer` are included.
+`mCNN` supports training of a Convolutional Neural Network. Currently `ConvolutionLayer`, `MeanPoolingLayer` are included. `MaxPooling` and `SumPooling` are under test.
+A version compatible to the ANN interface in Spark 1.5 is also under development in the communityInterface folder.
 
 ## Example
 
@@ -17,14 +18,11 @@ This documentation is for Spark 1.3+. Other version will probably work yet not t
 ```scala
     // training for Mnist data set.
     val topology = new CNNTopology
-    topology.addLayer(CNNLayer.buildInputLayer(new Scale(28, 28)))
-    topology.addLayer(CNNLayer.buildConvLayer(6, new Scale(5, 5)))
-    topology.addLayer(CNNLayer.buildSampLayer(new Scale(2, 2)))
-    topology.addLayer(CNNLayer.buildConvLayer(12, new Scale(5, 5)))
-    topology.addLayer(CNNLayer.buildSampLayer(new Scale(2, 2)))
-    topology.addLayer(CNNLayer.buildConvLayer(12, new Scale(4, 4)))
+    topology.addLayer(CNNLayer.buildConvolutionLayer(1, 6, new Scale(5, 5)))
+    topology.addLayer(CNNLayer.buildMeanPoolingLayer(6, 6, new Scale(2, 2)))
+    topology.addLayer(CNNLayer.buildConvolutionLayer(6, 12, new Scale(5, 5)))
+    topology.addLayer(CNNLayer.buildMeanPoolingLayer(12, 12, new Scale(2, 2)))
+    topology.addLayer(CNNLayer.buildConvolutionLayer(12, 12, new Scale(4, 4)))
     val cnn: CNN = new CNN(topology).setMaxIterations(1000).setMiniBatchSize(16)
-    val start = System.nanoTime()
     cnn.trainOneByOne(data)
-    println("Training time: " + (System.nanoTime() - start) / 1e9)
 ```

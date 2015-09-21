@@ -131,7 +131,6 @@ class CNN private extends Serializable with Logging{
           combOp = (c1, c2) => {
             (CNN.combineGradient(c1._1, c2._1), c1._2 + c2._2, c1._3 + c2._3)
           })
-
       t += 1
       if (count > 0){
         updateParams(gradientSum, count)
@@ -272,8 +271,7 @@ class CNN private extends Serializable with Logging{
    * @param label
    * @return
    */
-  private def setOutLayerErrors(
-      label: Int,
+  private def setOutLayerErrors(label: Int,
       output: Array[BDM[Double]]): (Boolean, Array[BDM[Double]]) = {
     val outputLayer: CNNLayer = layers.get(layerNum - 1)
     val mapNum: Int = outputLayer.getOutMapNum
@@ -288,108 +286,10 @@ class CNN private extends Serializable with Logging{
     val outClass = CNN.getMaxIndex(outValues)
     (label == outClass, layerError)
   }
-
-
 }
 
 
 object CNN {
-
-  private[mCNN] def kronecker(matrix: BDM[Double], scale: Scale): BDM[Double] = {
-    val ones = BDM.ones[Double](scale.x, scale.y)
-    kron(matrix, ones)
-  }
-
-  /**
-   * return a new matrix that has been scaled down
-   *
-   * @param matrix
-   */
-  private[mCNN] def scaleMatrix(matrix: BDM[Double], scale: Scale): BDM[Double] = {
-    val m: Int = matrix.rows
-    val n: Int = matrix.cols
-    val sm: Int = m / scale.x
-    val sn: Int = n / scale.y
-    val outMatrix = new BDM[Double](sm, sn)
-    val size = scale.x * scale.y
-    var i = 0
-    while (i < sm) {
-      var j = 0
-      while (j < sn) {
-        var sum = 0.0
-        var si = i * scale.x
-        while (si < (i + 1) * scale.x) {
-          var sj = j * scale.y
-          while (sj < (j + 1) * scale.y) {
-            sum += matrix(si, sj)
-            sj += 1
-          }
-          si += 1
-        }
-        outMatrix(i, j) = sum / size
-        j += 1
-      }
-      i += 1
-    }
-    outMatrix
-  }
-
-  /**
-   * full conv
-   *
-   * @param matrix
-   * @param kernel
-   * @return
-   */
-  private[mCNN] def convnFull(matrix: BDM[Double], kernel: BDM[Double]): BDM[Double] = {
-    val m: Int = matrix.rows
-    val n: Int = matrix.cols
-    val km: Int = kernel.rows
-    val kn: Int = kernel.cols
-    val extendMatrix = new BDM[Double](m + 2 * (km - 1), n + 2 * (kn - 1))
-    var i = 0
-    var j = 0
-    while (i < m) {
-      while (j < n) {
-        extendMatrix(i + km - 1, j + kn - 1) = matrix(i, j)
-        j += 1
-      }
-      i += 1
-    }
-    convnValid(extendMatrix, kernel)
-  }
-
-  /**
-   * valid conv
-   *
-   * @param matrix
-   * @param kernel
-   * @return
-   */
-  private[mCNN] def convnValid(matrix: BDM[Double], kernel: BDM[Double]): BDM[Double] = {
-    val m: Int = matrix.rows
-    val n: Int = matrix.cols
-    val km: Int = kernel.rows
-    val kn: Int = kernel.cols
-    val kns: Int = n - kn + 1
-    val kms: Int = m - km + 1
-    val outMatrix: BDM[Double] = new BDM[Double](kms, kns)
-    var i = 0
-    while (i < kms) {
-      var j = 0
-      while (j < kns) {
-        var sum = 0.0
-        for (ki <- 0 until km) {
-          for (kj <- 0 until kn)
-            sum += matrix(i + ki, j + kj) * kernel(ki, kj)
-        }
-        outMatrix(i, j) = sum
-        j += 1
-      }
-      i += 1
-    }
-    outMatrix
-  }
 
   private[mCNN] def getMaxIndex(out: Array[Double]): Int = {
     var max: Double = out(0)

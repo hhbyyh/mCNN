@@ -1,10 +1,25 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package hhbyyh.mCNN
 
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, fliplr, flipud, sum}
 import breeze.numerics._
 
-class ConvolutionLayer private[mCNN](
-                                      inMapNum: Int, outMapNum: Int, kernelSize: Scale)
+class ConvolutionLayer private[mCNN](inMapNum: Int, outMapNum: Int, kernelSize: Scale)
   extends CNNLayer(inMapNum: Int, outMapNum: Int, kernelSize: Scale){
 
   private var bias: BDV[Double] = null
@@ -45,10 +60,10 @@ class ConvolutionLayer private[mCNN](
         val lastMap = input(i)
         val kernel = this.getKernel(i, j)
         if (sum == null) {
-          sum = CNN.convnValid(lastMap, kernel)
+          sum = ConvolutionLayer.convnValid(lastMap, kernel)
         }
         else {
-          sum += CNN.convnValid(lastMap, kernel)
+          sum += ConvolutionLayer.convnValid(lastMap, kernel)
         }
         i += 1
       }
@@ -59,9 +74,8 @@ class ConvolutionLayer private[mCNN](
     output
   }
 
-  override def prevDelta(
-                          nextDelta: Array[BDM[Double]],
-                          layerInput: Array[BDM[Double]]): Array[BDM[Double]] = {
+  override def prevDelta(nextDelta: Array[BDM[Double]],
+      layerInput: Array[BDM[Double]]): Array[BDM[Double]] = {
 
     val mapNum: Int = layerInput.length
     val nextMapNum: Int = this.getOutMapNum
@@ -75,10 +89,10 @@ class ConvolutionLayer private[mCNN](
         val kernel = this.getKernel(i, j)
         // rotate kernel by 180 degrees and get full convolution
         if (sum == null) {
-          sum = CNN.convnFull(nextError, flipud(fliplr(kernel)))
+          sum = ConvolutionLayer.convnFull(nextError, flipud(fliplr(kernel)))
         }
         else {
-          sum += CNN.convnFull(nextError, flipud(fliplr(kernel)))
+          sum += ConvolutionLayer.convnFull(nextError, flipud(fliplr(kernel)))
         }
         j += 1
       }
@@ -88,9 +102,8 @@ class ConvolutionLayer private[mCNN](
     errors
   }
 
-  override def grad(
-                     layerError: Array[BDM[Double]],
-                     input: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double]) = {
+  override def grad(layerError: Array[BDM[Double]],
+      input: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double]) = {
     val kernelGradient = getKernelsGradient(layerError, input)
     val biasGradient = getBiasGradient(layerError)
     (kernelGradient, biasGradient)
@@ -99,9 +112,8 @@ class ConvolutionLayer private[mCNN](
   /**
    * get kernels gradient
    */
-  private def getKernelsGradient(
-                                  layerError: Array[BDM[Double]],
-                                  input: Array[BDM[Double]]): Array[Array[BDM[Double]]] = {
+  private def getKernelsGradient(layerError: Array[BDM[Double]],
+      input: Array[BDM[Double]]): Array[Array[BDM[Double]]] = {
     val mapNum: Int = this.getOutMapNum
     val lastMapNum: Int = input.length
     val delta = Array.ofDim[BDM[Double]](lastMapNum, mapNum)
@@ -110,7 +122,7 @@ class ConvolutionLayer private[mCNN](
       var i = 0
       while (i < lastMapNum) {
         val error = layerError(j)
-        val deltaKernel = CNN.convnValid(input(i), error)
+        val deltaKernel = ConvolutionLayer.convnValid(input(i), error)
         delta(i)(j) = deltaKernel
         i += 1
       }
@@ -135,5 +147,65 @@ class ConvolutionLayer private[mCNN](
       j += 1
     }
     gradient
+  }
+}
+
+object ConvolutionLayer{
+
+  /**
+   * full conv
+   *
+   * @param matrix
+   * @param kernel
+   * @return
+   */
+  private[mCNN] def convnFull(matrix: BDM[Double], kernel: BDM[Double]): BDM[Double] = {
+    val m: Int = matrix.rows
+    val n: Int = matrix.cols
+    val km: Int = kernel.rows
+    val kn: Int = kernel.cols
+    val extendMatrix = new BDM[Double](m + 2 * (km - 1), n + 2 * (kn - 1))
+    var i = 0
+    var j = 0
+    while (i < m) {
+      while (j < n) {
+        extendMatrix(i + km - 1, j + kn - 1) = matrix(i, j)
+        j += 1
+      }
+      i += 1
+    }
+    convnValid(extendMatrix, kernel)
+  }
+
+  /**
+   * valid conv
+   *
+   * @param matrix
+   * @param kernel
+   * @return
+   */
+  private[mCNN] def convnValid(matrix: BDM[Double], kernel: BDM[Double]): BDM[Double] = {
+    val m: Int = matrix.rows
+    val n: Int = matrix.cols
+    val km: Int = kernel.rows
+    val kn: Int = kernel.cols
+    val kns: Int = n - kn + 1
+    val kms: Int = m - km + 1
+    val outMatrix: BDM[Double] = new BDM[Double](kms, kns)
+    var i = 0
+    while (i < kms) {
+      var j = 0
+      while (j < kns) {
+        var sum = 0.0
+        for (ki <- 0 until km) {
+          for (kj <- 0 until kn)
+            sum += matrix(i + ki, j + kj) * kernel(ki, kj)
+        }
+        outMatrix(i, j) = sum
+        j += 1
+      }
+      i += 1
+    }
+    outMatrix
   }
 }

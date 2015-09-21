@@ -21,19 +21,6 @@ import java.io.Serializable
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, fliplr, flipud, sum}
 import breeze.numerics._
 
-object CNNLayer {
-  def buildConvLayer(inMapNum: Int, outMapNum: Int, kernelSize: Scale): CNNLayer = {
-    val layer = new ConvolutionLayer(inMapNum, outMapNum, kernelSize)
-    layer
-  }
-
-  def buildSampLayer(inMapNum: Int, outMapNum: Int, scaleSize: Scale): CNNLayer = {
-    val layer = new MeanPoolingLayer(inMapNum, outMapNum, scaleSize)
-    layer
-  }
-}
-
-
 abstract class CNNLayer private[mCNN](
     inMapNum: Int,
     outMapNum: Int,
@@ -49,4 +36,15 @@ abstract class CNNLayer private[mCNN](
     layerInput: Array[BDM[Double]]): (Array[Array[BDM[Double]]], Array[Double]) = null
 }
 
+object CNNLayer {
 
+  def buildConvolutionLayer(inMapNum: Int, outMapNum: Int, kernelSize: Scale): CNNLayer = {
+    val layer = new ConvolutionLayer(inMapNum, outMapNum, kernelSize)
+    layer
+  }
+
+  def buildMeanPoolingLayer(inMapNum: Int, outMapNum: Int, scaleSize: Scale): CNNLayer = {
+    val layer = new MeanPoolingLayer(inMapNum, outMapNum, scaleSize)
+    layer
+  }
+}
