@@ -21,12 +21,7 @@ import java.io.Serializable
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, fliplr, flipud, sum}
 import breeze.numerics._
 
-abstract class CNNLayer private[mCNN](
-    inMapNum: Int,
-    outMapNum: Int,
-    kernelSize: Scale) extends Serializable {
-
-  def getOutMapNum: Int = outMapNum
+abstract class CNNLayer private[mCNN] extends Serializable {
 
   def forward(input: Array[BDM[Double]]): Array[BDM[Double]] = input
 
@@ -43,8 +38,8 @@ object CNNLayer {
     layer
   }
 
-  def buildMeanPoolingLayer(inMapNum: Int, outMapNum: Int, scaleSize: Scale): CNNLayer = {
-    val layer = new MeanPoolingLayer(inMapNum, outMapNum, scaleSize)
+  def buildMeanPoolingLayer(scaleSize: Scale): CNNLayer = {
+    val layer = new MeanPoolingLayer(scaleSize)
     layer
   }
 }

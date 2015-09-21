@@ -33,9 +33,9 @@ object Example {
 
     val topology = new CNNTopology
     topology.addLayer(CNNLayer.buildConvolutionLayer(1, 6, new Scale(5, 5)))
-    topology.addLayer(CNNLayer.buildMeanPoolingLayer(6, 6, new Scale(2, 2)))
+    topology.addLayer(CNNLayer.buildMeanPoolingLayer(new Scale(2, 2)))
     topology.addLayer(CNNLayer.buildConvolutionLayer(6, 12, new Scale(5, 5)))
-    topology.addLayer(CNNLayer.buildMeanPoolingLayer(12, 12, new Scale(2, 2)))
+    topology.addLayer(CNNLayer.buildMeanPoolingLayer(new Scale(2, 2)))
     topology.addLayer(CNNLayer.buildConvolutionLayer(12, 12, new Scale(4, 4)))
     val cnn: CNN = new CNN(topology).setMaxIterations(1000).setMiniBatchSize(16)
     val start = System.nanoTime()

@@ -153,7 +153,7 @@ class CNN private extends Serializable with Logging{
     testSet.map(record => {
       val outputs: Array[Array[BDM[Double]]] = forward(record)
       val outputLayer = layers.get(layerNum - 1)
-      val mapNum = outputLayer.getOutMapNum
+      val mapNum = outputLayer.asInstanceOf[ConvolutionLayer].getOutMapNum
       val out = new Array[Double](mapNum)
       for (m <- 0 until mapNum) {
         val outMap = outputs(layerNum - 1)(m)
@@ -274,7 +274,7 @@ class CNN private extends Serializable with Logging{
   private def setOutLayerErrors(label: Int,
       output: Array[BDM[Double]]): (Boolean, Array[BDM[Double]]) = {
     val outputLayer: CNNLayer = layers.get(layerNum - 1)
-    val mapNum: Int = outputLayer.getOutMapNum
+    val mapNum: Int = outputLayer.asInstanceOf[ConvolutionLayer].getOutMapNum
     val target: Array[Double] = new Array[Double](mapNum)
     val outValues: Array[Double] = output.map(m => m(0, 0))
     target(label) = 1

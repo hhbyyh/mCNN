@@ -18,8 +18,8 @@ package hhbyyh.mCNN
 
 import breeze.linalg.{DenseMatrix => BDM, kron}
 
-class MeanPoolingLayer private[mCNN](inMapNum: Int, outMapNum: Int, scaleSize: Scale)
-  extends CNNLayer(inMapNum: Int, outMapNum: Int, scaleSize: Scale){
+class MeanPoolingLayer private[mCNN](scaleSize: Scale)
+  extends CNNLayer{
 
   def getScaleSize: Scale = scaleSize
 

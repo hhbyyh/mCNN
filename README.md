@@ -19,9 +19,9 @@ A version compatible to the ANN interface in Spark 1.5 is also under development
     // training for Mnist data set.
     val topology = new CNNTopology
     topology.addLayer(CNNLayer.buildConvolutionLayer(1, 6, new Scale(5, 5)))
-    topology.addLayer(CNNLayer.buildMeanPoolingLayer(6, 6, new Scale(2, 2)))
+    topology.addLayer(CNNLayer.buildMeanPoolingLayer(new Scale(2, 2)))
     topology.addLayer(CNNLayer.buildConvolutionLayer(6, 12, new Scale(5, 5)))
-    topology.addLayer(CNNLayer.buildMeanPoolingLayer(12, 12, new Scale(2, 2)))
+    topology.addLayer(CNNLayer.buildMeanPoolingLayer(new Scale(2, 2)))
     topology.addLayer(CNNLayer.buildConvolutionLayer(12, 12, new Scale(4, 4)))
     val cnn: CNN = new CNN(topology).setMaxIterations(1000).setMiniBatchSize(16)
     cnn.trainOneByOne(data)

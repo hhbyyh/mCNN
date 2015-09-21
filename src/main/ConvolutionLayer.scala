@@ -20,12 +20,14 @@ import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, fliplr, flipud, su
 import breeze.numerics._
 
 class ConvolutionLayer private[mCNN](inMapNum: Int, outMapNum: Int, kernelSize: Scale)
-  extends CNNLayer(inMapNum: Int, outMapNum: Int, kernelSize: Scale){
+  extends CNNLayer{
 
   private var bias: BDV[Double] = null
   private var kernel: Array[Array[BDM[Double]]] = null
   initBias(inMapNum)
   initKernel(inMapNum)
+
+  def getOutMapNum: Int = outMapNum
 
   private[mCNN] def initBias(frontMapNum: Int) {
     this.bias = BDV.zeros[Double](outMapNum)
