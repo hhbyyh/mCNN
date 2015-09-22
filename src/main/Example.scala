@@ -37,17 +37,26 @@ object Example {
     topology.addLayer(CNNLayer.buildConvolutionLayer(6, 12, new Scale(5, 5)))
     topology.addLayer(CNNLayer.buildMeanPoolingLayer(new Scale(2, 2)))
     topology.addLayer(CNNLayer.buildConvolutionLayer(12, 12, new Scale(4, 4)))
-    val cnn: CNN = new CNN(topology).setMaxIterations(1).setMiniBatchSize(16)
+    val cnn: CNN = new CNN(topology).setMaxIterations(0).setMiniBatchSize(16)
     val start = System.nanoTime()
     cnn.trainOneByOne(data)
     println("Training time: " + (System.nanoTime() - start) / 1e9)
 
-    var right = 0
-    data.collect().foreach(record =>{
+    val right = data.map(record =>{
       val result = cnn.predict(record._2)
-      right = right + (if(result == record._1) 1 else 0)
-    })
-    println(s"Predicting precision: $right, " + right.toDouble/(data.count()))
+      if(result == record._1) 1 else 0
+    }).sum()
+    println(s"Predicting precision: $right " + right.toDouble/(data.count()))
+
+    val testData = sc.textFile("dataset/mnist/mnist_test.csv", 8)
+      .map(line => line.split(",")).map(arr => arr.map(_.toDouble))
+      .map(arr => (arr(0), Example.Vector2Tensor(Vectors.dense(arr.slice(1, 785).map(v => if(v > 200) 1.0 else 0)))))
+
+    val rightM = testData.map(record =>{
+      val result = cnn.predict(record._2)
+      if(result == record._1) 1 else 0
+    }).sum()
+    println(s"Mnist Full Predicting precision: $rightM " + rightM.toDouble/(data.count()))
   }
 
   /**
@@ -68,6 +77,8 @@ object Example {
     }
     Array(m)
   }
+
+
 }
 
 

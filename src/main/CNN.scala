@@ -151,7 +151,7 @@ class CNN private extends Serializable with Logging{
 
   def predict(record: Array[BDM[Double]]): Int = {
     val outputs: Array[Array[BDM[Double]]] = forward(record)
-    val outValues: Array[Double] = outputs(layerNum - 1).map(m => m(0, 0))
+    val outValues: Array[Double] = outputs(layerNum).map(m => m(0, 0))
     CNN.getMaxIndex(outValues)
   }
 
@@ -196,15 +196,15 @@ class CNN private extends Serializable with Logging{
       outputs: Array[Array[BDM[Double]]])
   : (Boolean, Array[Array[BDM[Double]]]) = {
     val errors = new Array[Array[BDM[Double]]](layers.size + 1)
-    val result = setOutLayerErrors(label.toInt, outputs(layerNum))
-    errors(layerNum) = result._2
+    val (right, error) = setOutLayerErrors(label.toInt, outputs(layerNum))
+    errors(layerNum) = error
     var l: Int = layerNum - 2
     while (l >= 0) {
       val layer: CNNLayer = layers.get(l + 1)
       errors(l + 1) = layer.prevDelta(errors(l + 2), outputs(l + 1))
       l -= 1
     }
-    (result._1, errors)
+    (right, errors)
   }
 
   private def getGradient(
