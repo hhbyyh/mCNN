@@ -1,20 +1,19 @@
 
 package org.apache.spark.ml.ann
 
-import org.apache.spark.mllib.linalg.Vector
-import org.apache.spark.mllib.linalg.{Vectors, Vector}
-import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, Vector => BV, _}
+import breeze.linalg.{DenseMatrix => BDM, Vector => BV, _}
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.optimization.Updater
-import org.apache.spark.mllib.regression.LabeledPoint
 
 /**
  * Feed forward ANN
  * @param layers
  */
 private[ann] class CNNTopology private(val layers: Array[Layer]) extends Topology {
-  override def getInstance(weights: Vector): TopologyModel = CNNTopologyModel(this, weights)
 
-  override def getInstance(seed: Long): TopologyModel = CNNTopologyModel(this, seed)
+  override def getInstance(weights: Vector): TopologyModel = CNNModel(this, weights)
+
+  override def getInstance(seed: Long): TopologyModel = CNNModel(this, seed)
 }
 
 /**
@@ -37,7 +36,7 @@ private[ml] object CNNTopology {
  * @param layerModels models of layers
  * @param topology topology of the network
  */
-private[ml] class CNNTopologyModel private(
+private[ml] class CNNModel private(
     val layerModels: Array[LayerModel],
     val topology: CNNTopology) extends TopologyModel {
 
@@ -49,7 +48,6 @@ private[ml] class CNNTopologyModel private(
     }
     outputs
   }
-
 
   private def setOutLayerErrors(
       label: BDM[Double],
@@ -136,7 +134,7 @@ private[ml] class CNNTopologyModel private(
 /**
  * Fabric for feed forward ANN models
  */
-private[ann] object CNNTopologyModel {
+private[ann] object CNNModel {
 
   /**
    * Creates a model from a topology and weights
@@ -144,7 +142,7 @@ private[ann] object CNNTopologyModel {
    * @param weights weights
    * @return model
    */
-  def apply(topology: CNNTopology, weights: Vector): CNNTopologyModel = {
+  def apply(topology: CNNTopology, weights: Vector): CNNModel = {
     val layers = topology.layers
     val layerModels = new Array[LayerModel](layers.length)
     var offset = 0
@@ -152,7 +150,7 @@ private[ann] object CNNTopologyModel {
       layerModels(i) = layers(i).getInstance(weights, offset)
       offset += layerModels(i).size
     }
-    new CNNTopologyModel(layerModels, topology)
+    new CNNModel(layerModels, topology)
   }
 
   /**
@@ -161,13 +159,13 @@ private[ann] object CNNTopologyModel {
    * @param seed seed for generating the weights
    * @return model
    */
-  def apply(topology: CNNTopology, seed: Long = 11L): CNNTopologyModel = {
+  def apply(topology: CNNTopology, seed: Long = 11L): CNNModel = {
     val layers = topology.layers
     val layerModels = new Array[LayerModel](layers.length)
     for(i <- 0 until layers.length){
       layerModels(i) = layers(i).getInstance(seed)
     }
-    new CNNTopologyModel(layerModels, topology)
+    new CNNModel(layerModels, topology)
   }
 
   private[ann] def getMaxIndex(out: Array[Double]): Int = {
@@ -191,11 +189,11 @@ private[ann] object CNNTopologyModel {
 private[ann] class CNNUpdater extends Updater {
 
   override def compute(
-                        weightsOld: Vector,
-                        gradient: Vector,
-                        stepSize: Double,
-                        iter: Int,
-                        regParam: Double): (Vector, Double) = {
+      weightsOld: Vector,
+      gradient: Vector,
+      stepSize: Double,
+      iter: Int,
+      regParam: Double): (Vector, Double) = {
     val thisIterStepSize = stepSize
     val brzWeights: BV[Double] = weightsOld.toBreeze.toDenseVector
     axpy(thisIterStepSize, gradient.toBreeze, brzWeights)

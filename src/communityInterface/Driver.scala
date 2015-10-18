@@ -16,8 +16,10 @@
 */
 
 package org.apache.spark.ml.ann
+
 import org.apache.log4j.{Logger, Level}
-import org.apache.spark.mllib.linalg.{DenseVector, Vectors}
+import breeze.linalg.{DenseMatrix => BDM}
+import org.apache.spark.mllib.linalg.{Vectors, Vector}
 import org.apache.spark.{SparkContext, SparkConf}
 
 object CNNDriver {
@@ -25,7 +27,7 @@ object CNNDriver {
   def main(args: Array[String]) {
 
     val myLayers = new Array[Layer](5)
-    myLayers(0) = new ConvolutionLayer(1, 6, new Scale(5, 5), new Scale(28, 28))
+    myLayers(0) = new ConvolutionLayer(1, 6, kernelSize = new Scale(5, 5), inputSize = new Scale(28, 28))
     myLayers(1) = new MeanPoolingLayer(new Scale(2, 2), new Scale(24, 24))
     myLayers(2) = new ConvolutionLayer(6, 12, new Scale(5, 5), new Scale(12, 12))
     myLayers(3) = new MeanPoolingLayer(new Scale(2, 2), new Scale(8, 8))
@@ -41,26 +43,49 @@ object CNNDriver {
       .map(arr => {
       val target = new Array[Double](12)
       target(arr(784).toInt) = 1
-      (Vectors.dense(arr.slice(0, 784)), Vectors.dense(target))
-    })
+      val in = Vector2BDM(Vectors.dense(arr.slice(0, 784)))
+      (Vectors.fromBreeze(in.toDenseVector), Vectors.dense(target))
+    }).cache()
 
     val start = System.nanoTime()
-    val FeedForwardTrainer = new FeedForwardTrainer(topology, 784, 12)
-    FeedForwardTrainer.SGDOptimizer.setMiniBatchFraction(0.001).setConvergenceTol(1e-3).setNumIterations(1000000)
-    FeedForwardTrainer.setStackSize(1)
-    val mlpModel = FeedForwardTrainer.train(data)
+    val feedForwardTrainer = new FeedForwardTrainer(topology, 784, 12)
+    feedForwardTrainer.setStackSize(1)
+    feedForwardTrainer.SGDOptimizer
+      .setUpdater(new CNNUpdater)
+      .setMiniBatchFraction(0.001)
+      .setConvergenceTol(0)
+      .setNumIterations(1000)
 
-    // predict
-    val right = data.map(v => {
-      val pre = mlpModel.predict(v._1)
-      pre.argmax == v._2.argmax
-    }).filter(b => b).count()
+    for(iter <- 1 to 100){
+      val mlpModel = feedForwardTrainer.train(data)
+      feedForwardTrainer.setWeights(mlpModel.weights())
 
-    val precision = right.toDouble / data.count()
-
-    println(precision)
+      println(mlpModel.weights().toArray.take(10).mkString(", "))
+      // predict
+      val right = data.filter(v => {
+        val pre = mlpModel.predict(v._1)
+        pre.argmax == v._2.argmax
+      }).count()
+      val precision = right.toDouble / data.count()
+      println(s"right: $right, count: ${data.count()}, precision: $precision")
+    }
 
     println("Training time: " + (System.nanoTime() - start) / 1e9)
+  }
+
+  def Vector2BDM(record: Vector): BDM[Double] = {
+    val mapSize = new Scale(28, 28)
+    val m = new BDM[Double](mapSize.x, mapSize.y)
+    var i: Int = 0
+    while (i < mapSize.x) {
+      var j: Int = 0
+      while (j < mapSize.y) {
+        m(i, j) = record(mapSize.x * i + j)
+        j += 1
+      }
+      i += 1
+    }
+    m
   }
 
 }

@@ -33,7 +33,6 @@ private[ann] class MeanPoolingLayer(val poolingSize: Scale, val inputSize: Scale
 
 
 /**
- * Model of Affine layer y=A*x+b
  * @param poolingSize kernels (matrix A)
  * @param inputSize bias (vector b)
  */
@@ -41,9 +40,6 @@ private[ann] class MeanPoolingLayerModel private(
     poolingSize: Scale,
     inputSize: Scale) extends LayerModel {
 
-  type Tensor4D = Array[Array[BDM[Double]]]
-  type Tensor3D = Array[BDM[Double]]
-  type Tensor2D = Array[Double]
   val outputSize = inputSize.divide(poolingSize)
 
   override val size = 0
@@ -51,8 +47,8 @@ private[ann] class MeanPoolingLayerModel private(
   override def eval(data: BDM[Double]): BDM[Double] = {
     val inputMaps = new Array[BDM[Double]](data.cols)
     for(i <- 0 until data.cols){
-      val v = data(::, i)
-      inputMaps(i) = new BDM(inputSize.x, inputSize.y, v.data)
+      val v = data(::, i).toArray
+      inputMaps(i) = new BDM(inputSize.x, inputSize.y, v)
     }
 
     val inputMapNum: Int = inputMaps.length
@@ -74,14 +70,14 @@ private[ann] class MeanPoolingLayerModel private(
   override def prevDelta(nextDelta: BDM[Double], input: BDM[Double]): BDM[Double] = {
     val inputMaps = new Array[BDM[Double]](input.cols)
     for(i <- 0 until input.cols){
-      val v = input(::, i)
-      inputMaps(i) = new BDM(inputSize.x, inputSize.y, v.data)
+      val v = input(::, i).toArray
+      inputMaps(i) = new BDM(inputSize.x, inputSize.y, v)
     }
 
     val nextDeltaMaps = new Array[BDM[Double]](input.cols)
     for(i <- 0 until input.cols){
-      val v = nextDelta(::, i)
-      nextDeltaMaps(i) = new BDM(outputSize.x, outputSize.y, v.data)
+      val v = nextDelta(::, i).toArray
+      nextDeltaMaps(i) = new BDM(outputSize.x, outputSize.y, v)
     }
 
     val mapNum: Int = inputMaps.length
