@@ -63,13 +63,9 @@ private[ann] class ConvolutionLayerModel private(
   override val size = weights().size
 
   override def eval(data: BDM[Double]): BDM[Double] = {
-    require(data.cols == inMapNum)
+    require(data.cols == 1)
 
-    val inputMaps = new Array[BDM[Double]](inMapNum)
-    for(i <- 0 until inMapNum){
-      val v = data(::, i).toArray
-      inputMaps(i) = new BDM(inputSize.x, inputSize.y, v)
-    }
+    val inputMaps = ConvolutionLayerModel.line2Tensor(data, inputSize)
 
     val output = new Array[BDM[Double]](outMapNum)
     var j = 0
@@ -92,26 +88,14 @@ private[ann] class ConvolutionLayerModel private(
       output(j) = sum
       j += 1
     }
-    val outBDM = new BDM[Double](outputSize.x * outputSize.y, outMapNum)
-    for(i <- 0 until outMapNum){
-      outBDM(::, i) := output(i).toDenseVector
-    }
+
+    val outBDM = ConvolutionLayerModel.tensor2Line(output)
     outBDM
   }
 
   override def prevDelta(nextDelta: BDM[Double], input: BDM[Double]): BDM[Double] = {
-    val inputMaps = new Array[BDM[Double]](inMapNum)
-    for(i <- 0 until inMapNum){
-      val v = input(::, i).toArray
-      inputMaps(i) = new BDM(inputSize.x, inputSize.y, v)
-    }
-
-    require(nextDelta.cols == outMapNum)
-    val nextDeltaMaps = new Array[BDM[Double]](outMapNum)
-    for(i <- 0 until outMapNum){
-      val v = nextDelta(::, i).toArray
-      nextDeltaMaps(i) = new BDM(outputSize.x, outputSize.y, v)
-    }
+    require(nextDelta.cols == 1)
+    val nextDeltaMaps = ConvolutionLayerModel.line2Tensor(nextDelta, outputSize)
 
     val nextMapNum: Int = outMapNum
     val errors = new Array[BDM[Double]](inMapNum)
@@ -135,25 +119,13 @@ private[ann] class ConvolutionLayerModel private(
       i += 1
     }
 
-    val outBDM = new BDM[Double](inputSize.x * inputSize.y, inMapNum)
-    for(i <- 0 until inMapNum){
-      outBDM(::, i) := errors(i).toDenseVector
-    }
-    outBDM
+    ConvolutionLayerModel.tensor2Line(errors)
   }
 
   override def grad(delta: BDM[Double], input: BDM[Double]): Array[Double] = {
-    val inputMaps = new Array[BDM[Double]](inMapNum)
-    for(i <- 0 until inMapNum){
-      val v = input(::, i).toArray
-      inputMaps(i) = new BDM(inputSize.x, inputSize.y, v)
-    }
+    val inputMaps = ConvolutionLayerModel.line2Tensor(input, inputSize)
 
-    val deltaMaps = new Array[BDM[Double]](outMapNum)
-    for(i <- 0 until outMapNum){
-      val v = delta(::, i).toArray
-      deltaMaps(i) = new BDM(outputSize.x, outputSize.y, v)
-    }
+    val deltaMaps = ConvolutionLayerModel.line2Tensor(delta, outputSize)
 
     val kernelGradient = getKernelsGradient(inputMaps, deltaMaps)
     val biasGradient = getBiasGradient(deltaMaps)
@@ -238,6 +210,39 @@ private[ann] object ConvolutionLayerModel {
         kernel(i)(j) = (BDM.rand[Double](layer.kernelSize.x, layer.kernelSize.y) - 0.05) / 10.0
 
     new ConvolutionLayerModel(layer.numInMap, layer.numOutMap, kernel, bias, layer.inputSize)
+  }
+
+  private[ann] def line2Tensor(data: BDM[Double], size: Scale): Array[BDM[Double]] = {
+    // TODO: change to toArray directly
+    val v = data(::, 0).toArray
+    val prod = size.x * size.y
+    val num = v.length / prod
+    val maps = new Array[BDM[Double]](num)
+
+    var i = 0
+    var offset = 0
+    while(i < num){
+      maps(i) = new BDM(size.x, size.y, v, offset)
+      offset += prod
+      i += 1
+    }
+    maps
+  }
+
+  private[ann] def tensor2Line(data: Array[BDM[Double]]): BDM[Double] = {
+    require(data.length > 0)
+    val num = data.length
+    val size = data(0).size
+    val arr = new Array[Double](size * num)
+    var offset = 0
+    var i = 0
+    while (i < num){
+      System.arraycopy(data(i).toArray, 0, arr, offset, size)
+      offset += size
+      i += 1
+    }
+    val outBDM = new BDM[Double](num * size, 1, arr)
+    outBDM
   }
 
   private[ann] def roll(kernels: Array[Array[BDM[Double]]], bias: Array[Double]): Array[Double] = {

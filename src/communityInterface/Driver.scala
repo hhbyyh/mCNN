@@ -36,7 +36,7 @@ object CNNDriver {
 
     Logger.getLogger("org").setLevel(Level.WARN)
     Logger.getLogger("akka").setLevel(Level.WARN)
-    val conf = new SparkConf().setMaster("local[8]").setAppName("ttt")
+    val conf = new SparkConf().setMaster("local").setAppName("ttt")
     val sc = new SparkContext(conf)
     val lines = sc.textFile("dataset/train.format", 8)
     val data = lines.map(line => line.split(",")).map(arr => arr.map(_.toDouble))
@@ -49,8 +49,9 @@ object CNNDriver {
 
     val start = System.nanoTime()
     val feedForwardTrainer = new FeedForwardTrainer(topology, 784, 12)
-    feedForwardTrainer.setStackSize(1)
-    feedForwardTrainer.SGDOptimizer
+
+    feedForwardTrainer.setStackSize(1) // CNN seems does not benefit from the stacked data
+      .SGDOptimizer
       .setUpdater(new CNNUpdater)
       .setMiniBatchFraction(0.001)
       .setConvergenceTol(0)

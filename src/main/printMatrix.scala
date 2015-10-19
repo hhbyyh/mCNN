@@ -1,6 +1,5 @@
 package hhbyyh.mCNN
 
-import hhbyyh.mCNN.{CNN, Scale, CNNLayer, CNNTopology}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.{SparkContext, SparkConf}

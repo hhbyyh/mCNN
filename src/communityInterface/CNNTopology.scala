@@ -52,12 +52,12 @@ private[ml] class CNNModel private(
   private def setOutLayerErrors(
       label: BDM[Double],
       output: BDM[Double]): (Double, BDM[Double]) = {
-    val mapNum: Int = output.cols
-    val outValues: Array[Double] = output(0,::).t.toArray
+    val mapNum: Int = output.rows
+    val outValues: Array[Double] = output(::, 0).toArray
     val target: Array[Double] = label(::, 0).toArray
-    val layerError: BDM[Double] = new BDM(1, mapNum)
+    val layerError: BDM[Double] = new BDM(mapNum, 1)
     for(i <- 0 until mapNum){
-      layerError(0, i) = outValues(i) * (1 - outValues(i)) * (target(i) - outValues(i))
+      layerError(i, 0) = outValues(i) * (1 - outValues(i)) * (target(i) - outValues(i))
     }
     (sum(layerError), layerError)
   }

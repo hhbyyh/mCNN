@@ -45,12 +45,7 @@ private[ann] class MeanPoolingLayerModel private(
   override val size = 0
 
   override def eval(data: BDM[Double]): BDM[Double] = {
-    val inputMaps = new Array[BDM[Double]](data.cols)
-    for(i <- 0 until data.cols){
-      val v = data(::, i).toArray
-      inputMaps(i) = new BDM(inputSize.x, inputSize.y, v)
-    }
-
+    val inputMaps = ConvolutionLayerModel.line2Tensor(data, inputSize)
     val inputMapNum: Int = inputMaps.length
     val output = new Array[BDM[Double]](inputMapNum)
     var i: Int = 0
@@ -60,25 +55,12 @@ private[ann] class MeanPoolingLayerModel private(
       output(i) = MeanPoolingLayerModel.avgPooling(inputMap, scaleSize)
       i += 1
     }
-    val outBDM = new BDM[Double](outputSize.x * outputSize.y, data.cols)
-    for(i <- 0 until data.cols){
-      outBDM(::, i) := output(i).toDenseVector
-    }
-    outBDM
+    ConvolutionLayerModel.tensor2Line(output)
   }
 
   override def prevDelta(nextDelta: BDM[Double], input: BDM[Double]): BDM[Double] = {
-    val inputMaps = new Array[BDM[Double]](input.cols)
-    for(i <- 0 until input.cols){
-      val v = input(::, i).toArray
-      inputMaps(i) = new BDM(inputSize.x, inputSize.y, v)
-    }
-
-    val nextDeltaMaps = new Array[BDM[Double]](input.cols)
-    for(i <- 0 until input.cols){
-      val v = nextDelta(::, i).toArray
-      nextDeltaMaps(i) = new BDM(outputSize.x, outputSize.y, v)
-    }
+    val inputMaps = ConvolutionLayerModel.line2Tensor(input, inputSize)
+    val nextDeltaMaps = ConvolutionLayerModel.line2Tensor(nextDelta, outputSize)
 
     val mapNum: Int = inputMaps.length
     val errors = new Array[BDM[Double]](mapNum)
@@ -94,11 +76,7 @@ private[ann] class MeanPoolingLayerModel private(
       m += 1
     }
 
-    val outBDM = new BDM[Double](inputSize.x * inputSize.y, input.cols)
-    for(i <- 0 until input.cols){
-      outBDM(::, i) := errors(i).toDenseVector
-    }
-    outBDM
+    ConvolutionLayerModel.tensor2Line(errors)
   }
 
   override def grad(delta: BDM[Double], input: BDM[Double]): Array[Double] = {
@@ -106,7 +84,6 @@ private[ann] class MeanPoolingLayerModel private(
   }
 
   override def weights(): Vector = Vectors.dense(new Array[Double](0))
-
 
 }
 
