@@ -59,19 +59,14 @@ private[ann] class MeanPoolingLayerModel private(
   }
 
   override def prevDelta(nextDelta: BDM[Double], input: BDM[Double]): BDM[Double] = {
-    val inputMaps = ConvolutionLayerModel.line2Tensor(input, inputSize)
     val nextDeltaMaps = ConvolutionLayerModel.line2Tensor(nextDelta, outputSize)
-
-    val mapNum: Int = inputMaps.length
+    val mapNum: Int = nextDeltaMaps.length
     val errors = new Array[BDM[Double]](mapNum)
     var m: Int = 0
     val scale: Scale = this.poolingSize
     while (m < mapNum) {
       val nextError: BDM[Double] = nextDeltaMaps(m)
-      val map: BDM[Double] = inputMaps(m)
-      var outMatrix: BDM[Double] = (1.0 - map)
-      outMatrix = map :* outMatrix
-      outMatrix = outMatrix :* MeanPoolingLayerModel.kronecker(nextError, scale)
+      val outMatrix = MeanPoolingLayerModel.kronecker(nextError, scale)
       errors(m) = outMatrix
       m += 1
     }

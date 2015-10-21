@@ -19,6 +19,7 @@ package org.apache.spark.ml.ann
 
 import org.apache.log4j.{Logger, Level}
 import breeze.linalg.{DenseMatrix => BDM}
+import org.apache.spark.ml.ann.FunctionalLayer
 import org.apache.spark.mllib.linalg.{Vectors, Vector}
 import org.apache.spark.{SparkContext, SparkConf}
 
@@ -26,17 +27,20 @@ object CNNDriver {
 
   def main(args: Array[String]) {
 
-    val myLayers = new Array[Layer](5)
+    val myLayers = new Array[Layer](8)
     myLayers(0) = new ConvolutionLayer(1, 6, kernelSize = new Scale(5, 5), inputSize = new Scale(28, 28))
-    myLayers(1) = new MeanPoolingLayer(new Scale(2, 2), new Scale(24, 24))
-    myLayers(2) = new ConvolutionLayer(6, 12, new Scale(5, 5), new Scale(12, 12))
-    myLayers(3) = new MeanPoolingLayer(new Scale(2, 2), new Scale(8, 8))
-    myLayers(4) = new ConvolutionLayer(12, 12, new Scale(4, 4), new Scale(4, 4))
-    val topology = CNNTopology(myLayers)
+    myLayers(1) = new FunctionalLayer(new SigmoidFunction())
+    myLayers(2) = new MeanPoolingLayer(new Scale(2, 2), new Scale(24, 24))
+    myLayers(3) = new ConvolutionLayer(6, 12, new Scale(5, 5), new Scale(12, 12))
+    myLayers(4) = new FunctionalLayer(new SigmoidFunction())
+    myLayers(5) = new MeanPoolingLayer(new Scale(2, 2), new Scale(8, 8))
+    myLayers(6) = new ConvolutionLayer(12, 12, new Scale(4, 4), new Scale(4, 4))
+    myLayers(7) = new FunctionalLayer(new SigmoidFunction())
+    val topology = FeedForwardTopology(myLayers)
 
     Logger.getLogger("org").setLevel(Level.WARN)
     Logger.getLogger("akka").setLevel(Level.WARN)
-    val conf = new SparkConf().setMaster("local").setAppName("ttt")
+    val conf = new SparkConf().setMaster("local[8]").setAppName("ttt")
     val sc = new SparkContext(conf)
     val lines = sc.textFile("dataset/train.format", 8)
     val data = lines.map(line => line.split(",")).map(arr => arr.map(_.toDouble))
@@ -52,7 +56,6 @@ object CNNDriver {
 
     feedForwardTrainer.setStackSize(1) // CNN seems does not benefit from the stacked data
       .SGDOptimizer
-      .setUpdater(new CNNUpdater)
       .setMiniBatchFraction(0.001)
       .setConvergenceTol(0)
       .setNumIterations(1000)

@@ -84,7 +84,6 @@ private[ann] class ConvolutionLayerModel private(
         }
         i += 1
       }
-      sum = sigmoid(sum + oldBias(j))
       output(j) = sum
       j += 1
     }
