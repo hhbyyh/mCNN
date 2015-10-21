@@ -28,13 +28,13 @@ object CNNDriver {
   def main(args: Array[String]) {
 
     val myLayers = new Array[Layer](8)
-    myLayers(0) = new ConvolutionLayer(1, 6, kernelSize = new Scale(5, 5), inputSize = new Scale(28, 28))
+    myLayers(0) = new ConvolutionalLayer(1, 6, kernelSize = new MapSize(5, 5), inputSize = new MapSize(28, 28))
     myLayers(1) = new FunctionalLayer(new SigmoidFunction())
-    myLayers(2) = new MeanPoolingLayer(new Scale(2, 2), new Scale(24, 24))
-    myLayers(3) = new ConvolutionLayer(6, 12, new Scale(5, 5), new Scale(12, 12))
+    myLayers(2) = new MeanPoolingLayer(new MapSize(2, 2), new MapSize(24, 24))
+    myLayers(3) = new ConvolutionalLayer(6, 12, new MapSize(5, 5), new MapSize(12, 12))
     myLayers(4) = new FunctionalLayer(new SigmoidFunction())
-    myLayers(5) = new MeanPoolingLayer(new Scale(2, 2), new Scale(8, 8))
-    myLayers(6) = new ConvolutionLayer(12, 12, new Scale(4, 4), new Scale(4, 4))
+    myLayers(5) = new MeanPoolingLayer(new MapSize(2, 2), new MapSize(8, 8))
+    myLayers(6) = new ConvolutionalLayer(12, 12, new MapSize(4, 4), new MapSize(4, 4))
     myLayers(7) = new FunctionalLayer(new SigmoidFunction())
     val topology = FeedForwardTopology(myLayers)
 
@@ -54,16 +54,17 @@ object CNNDriver {
     val start = System.nanoTime()
     val feedForwardTrainer = new FeedForwardTrainer(topology, 784, 12)
 
-    feedForwardTrainer.setStackSize(1) // CNN seems does not benefit from the stacked data
+    feedForwardTrainer.setStackSize(1) // CNN does not benefit from the stacked data
       .SGDOptimizer
       .setMiniBatchFraction(0.001)
       .setConvergenceTol(0)
       .setNumIterations(1000)
+      .setUpdater(new CNNUpdater)
 
-    for(iter <- 1 to 100){
+    for(iter <- 1 to 10){
       val mlpModel = feedForwardTrainer.train(data)
       feedForwardTrainer.setWeights(mlpModel.weights())
-
+      println(s"Training time $iter: " + (System.nanoTime() - start) / 1e9)
       println(mlpModel.weights().toArray.take(10).mkString(", "))
       // predict
       val right = data.filter(v => {
@@ -74,11 +75,11 @@ object CNNDriver {
       println(s"right: $right, count: ${data.count()}, precision: $precision")
     }
 
-    println("Training time: " + (System.nanoTime() - start) / 1e9)
+    println("Total training time: " + (System.nanoTime() - start) / 1e9)
   }
 
   def Vector2BDM(record: Vector): BDM[Double] = {
-    val mapSize = new Scale(28, 28)
+    val mapSize = new MapSize(28, 28)
     val m = new BDM[Double](mapSize.x, mapSize.y)
     var i: Int = 0
     while (i < mapSize.x) {

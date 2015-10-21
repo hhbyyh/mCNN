@@ -16,135 +16,132 @@
 */
 package org.apache.spark.ml.ann
 
-import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, sum, flipud, fliplr}
-import breeze.numerics._
+import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, fliplr, flipud, sum}
 import org.apache.spark.mllib.linalg.{DenseVector, Vector}
-import org.apache.spark.util.random.XORShiftRandom
 
 /**
-* ConvolutionLayer
-* @param numInMap number of inputs
-* @param numOutMap number of outputs
-*/
-private[ann] class ConvolutionLayer(
+ * Layer properties of Convolutional Layer
+ * @param numInMap number of inputs
+ * @param numOutMap number of outputs
+ */
+private[ann] class ConvolutionalLayer(
     val numInMap: Int,
     val numOutMap: Int,
-    val kernelSize: Scale,
-    val inputSize: Scale) extends Layer {
+    val kernelSize: MapSize,
+    val inputSize: MapSize) extends Layer {
 
   override def getInstance(weights: Vector, position: Int): LayerModel = {
-    ConvolutionLayerModel(this, weights, position)
+    ConvolutionalLayerModel(this, weights, position)
   }
 
   override def getInstance(seed: Long = 11L): LayerModel = {
-    ConvolutionLayerModel(this, seed)
+    ConvolutionalLayerModel(this, seed)
   }
 }
 
-
 /**
-* ConvolutionLayerModel
-* @param kernels kernels (matrix A)
-* @param bias bias (vector b)
-*/
-private[ann] class ConvolutionLayerModel private(
+ * ConvolutionLayerModel contains multiple kernels and applies a 2D convolution over the input maps.
+ * @param inMapNum number of input feature maps
+ * @param outMapNum number of output feature maps
+ * @param kernels weights in the form of inNum * outNum * kernelSize
+ * @param bias bias for each outMap, with length equal to outMapNum
+ * @param inputMapSize size of each input feature map
+ */
+private[ann] class ConvolutionalLayerModel private(
     inMapNum: Int,
     outMapNum: Int,
     kernels: Array[Array[BDM[Double]]],
     bias: Array[Double],
-    inputSize: Scale) extends LayerModel {
+    inputMapSize: MapSize) extends LayerModel {
 
-  require(inMapNum > 0)
-  require(outMapNum > 0)
   require(kernels.length == inMapNum)
-  require(kernels(0).length == outMapNum)
-  val outputSize = inputSize.subtract(new Scale(kernels(0)(0).rows, kernels(0)(0).cols), 1)
+  require(kernels.length > 0 && kernels(0).length == outMapNum)
+  require(bias.length == outMapNum)
 
-  override val size = weights().size
+  private val kernelSize = new MapSize(kernels(0)(0).rows, kernels(0)(0).cols)
+  private val outputSize = inputMapSize.subtract(kernelSize, 1)
 
+  override val size = kernelSize.x * kernelSize.y * inMapNum * outMapNum + bias.length
+
+  /**
+    * @param data contains only one column with all the data for one sample, so its size is
+    *             inMapNum * inputMapSize. CNN does not benefit from stacked input
+    */
   override def eval(data: BDM[Double]): BDM[Double] = {
+    require(data.rows == this.inMapNum * inputMapSize.x * inputMapSize.y)
     require(data.cols == 1)
+    // local copy
+    val inMapNum = this.inMapNum
+    val outMapNum = this.outMapNum
+    val kernels = this.kernels
+    val bias = this.bias
 
-    val inputMaps = ConvolutionLayerModel.line2Tensor(data, inputSize)
-
-    val output = new Array[BDM[Double]](outMapNum)
+    val inputMaps = FeatureMapRolling.extractMaps(data, inputMapSize)
+    val output = new Array[BDM[Double]](this.outMapNum)
     var j = 0
-    val oldBias = this.bias
     while (j < outMapNum) {
-      var sum: BDM[Double] = null
-      var i = 0
+      var sum: BDM[Double] = ConvolutionalLayerModel.convValid(inputMaps(0), kernels(0)(j))
+      var i = 1
       while (i < inMapNum) {
-        val lastMap = inputMaps(i)
-        val kernel = this.kernels(i)(j)
-        if (sum == null) {
-          sum = ConvolutionLayerModel.convnValid(lastMap, kernel)
-        }
-        else {
-          sum += ConvolutionLayerModel.convnValid(lastMap, kernel)
-        }
+        sum += ConvolutionalLayerModel.convValid(inputMaps(i), kernels(i)(j))
         i += 1
       }
-      output(j) = sum
+      output(j) = sum + bias(j)
       j += 1
     }
-
-    val outBDM = ConvolutionLayerModel.tensor2Line(output)
+    // reorganize feature maps to a single column in a dense matrix.
+    val outBDM = FeatureMapRolling.mergeMaps(output)
     outBDM
   }
 
   override def prevDelta(nextDelta: BDM[Double], input: BDM[Double]): BDM[Double] = {
     require(nextDelta.cols == 1)
-    val nextDeltaMaps = ConvolutionLayerModel.line2Tensor(nextDelta, outputSize)
+    // local copy
+    val inMapNum = this.inMapNum
+    val outMapNum = this.outMapNum
+    val kernels = this.kernels
 
-    val nextMapNum: Int = outMapNum
-    val errors = new Array[BDM[Double]](inMapNum)
+    val nextDeltaMaps = FeatureMapRolling.extractMaps(nextDelta, outputSize)
+    val deltas = new Array[BDM[Double]](inMapNum)
     var i = 0
     while (i < inMapNum) {
-      var sum: BDM[Double] = null // sum for every kernel
-      var j = 0
-      while (j < nextMapNum) {
-        val nextError = nextDeltaMaps(j)
-        val kernel = kernels(i)(j)
-        // rotate kernel by 180 degrees and get full convolution
-        if (sum == null) {
-          sum = ConvolutionLayerModel.convnFull(nextError, flipud(fliplr(kernel)))
-        }
-        else {
-          sum += ConvolutionLayerModel.convnFull(nextError, flipud(fliplr(kernel)))
-        }
+      // rotate kernel by 180 degrees and get full convolution
+      var sum: BDM[Double] = ConvolutionalLayerModel.convFull(nextDeltaMaps(0),
+        flipud(fliplr(kernels(i)(0))))
+      var j = 1
+      while (j < outMapNum) {
+        sum += ConvolutionalLayerModel.convFull(nextDeltaMaps(j), flipud(fliplr(kernels(i)(j))))
         j += 1
       }
-      errors(i) = sum
+      deltas(i) = sum
       i += 1
     }
-
-    ConvolutionLayerModel.tensor2Line(errors)
+    // reorganize delta maps to a single column in a dense matrix.
+    FeatureMapRolling.mergeMaps(deltas)
   }
 
   override def grad(delta: BDM[Double], input: BDM[Double]): Array[Double] = {
-    val inputMaps = ConvolutionLayerModel.line2Tensor(input, inputSize)
-
-    val deltaMaps = ConvolutionLayerModel.line2Tensor(delta, outputSize)
+    val inputMaps = FeatureMapRolling.extractMaps(input, inputMapSize)
+    val deltaMaps = FeatureMapRolling.extractMaps(delta, outputSize)
 
     val kernelGradient = getKernelsGradient(inputMaps, deltaMaps)
     val biasGradient = getBiasGradient(deltaMaps)
-    ConvolutionLayerModel.roll(kernelGradient, biasGradient)
+    ConvolutionalLayerModel.roll(kernelGradient, biasGradient)
   }
 
   /**
    * get kernels gradient
    */
-  private def getKernelsGradient(input: Array[BDM[Double]], layerError: Array[BDM[Double]]): Array[Array[BDM[Double]]] = {
-    val mapNum: Int = outMapNum
-    val lastMapNum: Int = input.length
-    val kernelGradient = Array.ofDim[BDM[Double]](lastMapNum, mapNum)
+  private def getKernelsGradient(input: Array[BDM[Double]],
+      delta: Array[BDM[Double]]): Array[Array[BDM[Double]]] = {
+    val outMapNum = this.outMapNum
+    val inMapNum = this.inMapNum
+    val kernelGradient = Array.ofDim[BDM[Double]](inMapNum, outMapNum)
     var j = 0
-    while (j < mapNum) {
+    while (j < outMapNum) {
       var i = 0
-      while (i < lastMapNum) {
-        val error = layerError(j)
-        val deltaKernel = ConvolutionLayerModel.convnValid(input(i), error)
-        kernelGradient(i)(j) = deltaKernel
+      while (i < inMapNum) {
+        kernelGradient(i)(j) = ConvolutionalLayerModel.convValid(input(i), delta(j))
         i += 1
       }
       j += 1
@@ -155,44 +152,43 @@ private[ann] class ConvolutionLayerModel private(
   /**
    * get bias gradient
    *
-   * @param errors errors of this layer
+   * @param deltas errors of this layer
    */
-  private def getBiasGradient(errors: Array[BDM[Double]]): Array[Double] = {
-    val mapNum: Int = outMapNum
+  private def getBiasGradient(deltas: Array[BDM[Double]]): Array[Double] = {
+    val outMapNum = this.outMapNum
+    
+    val gradient = new Array[Double](outMapNum)
     var j: Int = 0
-    val gradient = new Array[Double](mapNum)
-    while (j < mapNum) {
-      val error: BDM[Double] = errors(j)
-      val deltaBias: Double = sum(error)
-      gradient(j) = deltaBias
+    while (j < outMapNum) {
+      gradient(j) = sum(deltas(j))
       j += 1
     }
     gradient
   }
 
-  override def weights(): Vector = new DenseVector(ConvolutionLayerModel.roll(kernels, bias))
+  override def weights(): Vector = new DenseVector(ConvolutionalLayerModel.roll(kernels, bias))
 
 }
 
 /**
-* Fabric for Affine layer models
+* Fabric for Convolutional layer models
 */
-private[ann] object ConvolutionLayerModel {
+private[ann] object ConvolutionalLayerModel {
 
   /**
-   * Creates a model of Affine layer
+   * Creates a model of Convolutional layer
    * @param layer layer properties
    * @param weights vector with weights
    * @param position position of weights in the vector
-   * @return model of Affine layer
+   * @return model of Convolutional layer
    */
-  def apply(layer: ConvolutionLayer, weights: Vector, position: Int): ConvolutionLayerModel = {
+  def apply(layer: ConvolutionalLayer, weights: Vector, position: Int): ConvolutionalLayerModel = {
     val (w, b) = unroll(weights, position,
       layer.numInMap,
       layer.numOutMap,
       layer.kernelSize,
       layer.inputSize)
-    new ConvolutionLayerModel(layer.numInMap, layer.numOutMap, w, b, layer.inputSize)
+    new ConvolutionalLayerModel(layer.numInMap, layer.numOutMap, w, b, layer.inputSize)
   }
 
   /**
@@ -201,47 +197,14 @@ private[ann] object ConvolutionLayerModel {
    * @param seed seed
    * @return model of Affine layer
    */
-  def apply(layer: ConvolutionLayer, seed: Long): ConvolutionLayerModel = {
-    val bias = new Array[Double](layer.numOutMap)
+  def apply(layer: ConvolutionalLayer, seed: Long): ConvolutionalLayerModel = {
+    val bias = new Array[Double](layer.numOutMap) // bias init to 0
     val kernel = Array.ofDim[BDM[Double]](layer.numInMap, layer.numOutMap)
     for (i <- 0 until layer.numInMap)
       for (j <- 0 until layer.numOutMap)
         kernel(i)(j) = (BDM.rand[Double](layer.kernelSize.x, layer.kernelSize.y) - 0.05) / 10.0
 
-    new ConvolutionLayerModel(layer.numInMap, layer.numOutMap, kernel, bias, layer.inputSize)
-  }
-
-  private[ann] def line2Tensor(data: BDM[Double], size: Scale): Array[BDM[Double]] = {
-    // TODO: change to toArray directly
-    val v = data(::, 0).toArray
-    val prod = size.x * size.y
-    val num = v.length / prod
-    val maps = new Array[BDM[Double]](num)
-
-    var i = 0
-    var offset = 0
-    while(i < num){
-      maps(i) = new BDM(size.x, size.y, v, offset)
-      offset += prod
-      i += 1
-    }
-    maps
-  }
-
-  private[ann] def tensor2Line(data: Array[BDM[Double]]): BDM[Double] = {
-    require(data.length > 0)
-    val num = data.length
-    val size = data(0).size
-    val arr = new Array[Double](size * num)
-    var offset = 0
-    var i = 0
-    while (i < num){
-      System.arraycopy(data(i).toArray, 0, arr, offset, size)
-      offset += size
-      i += 1
-    }
-    val outBDM = new BDM[Double](num * size, 1, arr)
-    outBDM
+    new ConvolutionalLayerModel(layer.numInMap, layer.numOutMap, kernel, bias, layer.inputSize)
   }
 
   private[ann] def roll(kernels: Array[Array[BDM[Double]]], bias: Array[Double]): Array[Double] = {
@@ -272,13 +235,12 @@ private[ann] object ConvolutionLayerModel {
    * @param numOut number of layer outputs
    * @return matrix A and vector b
    */
-  def unroll(
-      weights: Vector,
+  def unroll(weights: Vector,
       position: Int,
       numIn: Int,
       numOut: Int,
-      kernelSize: Scale,
-      inputSize: Scale): (Array[Array[BDM[Double]]], Array[Double]) = {
+      kernelSize: MapSize,
+      inputSize: MapSize): (Array[Array[BDM[Double]]], Array[Double]) = {
     val weightsCopy = weights.toArray
     var offset = position
     val kernels = new Array[Array[BDM[Double]]](numIn)
@@ -302,7 +264,7 @@ private[ann] object ConvolutionLayerModel {
    * @param kernel
    * @return
    */
-  private[ann] def convnFull(matrix: BDM[Double], kernel: BDM[Double]): BDM[Double] = {
+  private[ann] def convFull(matrix: BDM[Double], kernel: BDM[Double]): BDM[Double] = {
     val m: Int = matrix.rows
     val n: Int = matrix.cols
     val km: Int = kernel.rows
@@ -317,7 +279,7 @@ private[ann] object ConvolutionLayerModel {
       }
       i += 1
     }
-    convnValid(extendMatrix, kernel)
+    convValid(extendMatrix, kernel)
   }
 
   /**
@@ -327,7 +289,7 @@ private[ann] object ConvolutionLayerModel {
    * @param kernel
    * @return
    */
-  private[ann] def convnValid(matrix: BDM[Double], kernel: BDM[Double]): BDM[Double] = {
+  private[ann] def convValid(matrix: BDM[Double], kernel: BDM[Double]): BDM[Double] = {
     val m: Int = matrix.rows
     val n: Int = matrix.cols
     val km: Int = kernel.rows

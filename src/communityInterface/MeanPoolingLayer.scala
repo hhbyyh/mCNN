@@ -17,53 +17,48 @@
 
 package org.apache.spark.ml.ann
 
-import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, Vector => BV, axpy => Baxpy, sum => Bsum, _}
-import org.apache.spark.mllib.linalg.{Vectors, Vector}
+import breeze.linalg.{DenseMatrix => BDM, _}
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
 
 /**
- * Layer properties of affine transformations, that is y=A*x+b
+ * Layer properties of Mean Pooling transformations
  * @param poolingSize number of inputs
  */
-private[ann] class MeanPoolingLayer(val poolingSize: Scale, val inputSize: Scale) extends Layer {
+private[ann] class MeanPoolingLayer(val poolingSize: MapSize, val inputSize: MapSize) extends Layer {
 
   override def getInstance(weights: Vector, position: Int): LayerModel = getInstance(0L)
 
   override def getInstance(seed: Long = 11L): LayerModel = MeanPoolingLayerModel(this, inputSize)
 }
 
-
-/**
- * @param poolingSize kernels (matrix A)
- * @param inputSize bias (vector b)
- */
-private[ann] class MeanPoolingLayerModel private(
-    poolingSize: Scale,
-    inputSize: Scale) extends LayerModel {
+private[ann] class MeanPoolingLayerModel private(poolingSize: MapSize,
+    inputSize: MapSize) extends LayerModel {
 
   val outputSize = inputSize.divide(poolingSize)
 
   override val size = 0
 
   override def eval(data: BDM[Double]): BDM[Double] = {
-    val inputMaps = ConvolutionLayerModel.line2Tensor(data, inputSize)
-    val inputMapNum: Int = inputMaps.length
+    val inputMaps = FeatureMapRolling.extractMaps(data, inputSize)
+    val inputMapNum = inputMaps.length
+    val scaleSize: MapSize = this.poolingSize
+
     val output = new Array[BDM[Double]](inputMapNum)
-    var i: Int = 0
+    var i = 0
     while (i < inputMapNum) {
       val inputMap: BDM[Double] = inputMaps(i)
-      val scaleSize: Scale = this.poolingSize
       output(i) = MeanPoolingLayerModel.avgPooling(inputMap, scaleSize)
       i += 1
     }
-    ConvolutionLayerModel.tensor2Line(output)
+    FeatureMapRolling.mergeMaps(output)
   }
 
   override def prevDelta(nextDelta: BDM[Double], input: BDM[Double]): BDM[Double] = {
-    val nextDeltaMaps = ConvolutionLayerModel.line2Tensor(nextDelta, outputSize)
+    val nextDeltaMaps = FeatureMapRolling.extractMaps(nextDelta, outputSize)
     val mapNum: Int = nextDeltaMaps.length
     val errors = new Array[BDM[Double]](mapNum)
     var m: Int = 0
-    val scale: Scale = this.poolingSize
+    val scale: MapSize = this.poolingSize
     while (m < mapNum) {
       val nextError: BDM[Double] = nextDeltaMaps(m)
       val outMatrix = MeanPoolingLayerModel.kronecker(nextError, scale)
@@ -71,7 +66,7 @@ private[ann] class MeanPoolingLayerModel private(
       m += 1
     }
 
-    ConvolutionLayerModel.tensor2Line(errors)
+    FeatureMapRolling.mergeMaps(errors)
   }
 
   override def grad(delta: BDM[Double], input: BDM[Double]): Array[Double] = {
@@ -92,8 +87,8 @@ private[ann] object MeanPoolingLayerModel {
    * @param layer layer properties
    * @return model of Affine layer
    */
-  def apply(layer: MeanPoolingLayer, inputSize: Scale): MeanPoolingLayerModel = {
-    new MeanPoolingLayerModel(layer.poolingSize, inputSize: Scale)
+  def apply(layer: MeanPoolingLayer, inputSize: MapSize): MeanPoolingLayerModel = {
+    new MeanPoolingLayerModel(layer.poolingSize, inputSize: MapSize)
   }
 
   /**
@@ -101,7 +96,7 @@ private[ann] object MeanPoolingLayerModel {
    *
    * @param matrix
    */
-  private[ann] def avgPooling(matrix: BDM[Double], scale: Scale): BDM[Double] = {
+  private[ann] def avgPooling(matrix: BDM[Double], scale: MapSize): BDM[Double] = {
     val m: Int = matrix.rows
     val n: Int = matrix.cols
     val scaleX = scale.x
@@ -135,7 +130,7 @@ private[ann] object MeanPoolingLayerModel {
     outMatrix
   }
 
-  private[ann] def kronecker(matrix: BDM[Double], scale: Scale): BDM[Double] = {
+  private[ann] def kronecker(matrix: BDM[Double], scale: MapSize): BDM[Double] = {
     val ones = BDM.ones[Double](scale.x, scale.y)
     kron(matrix, ones)
   }

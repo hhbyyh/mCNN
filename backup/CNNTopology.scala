@@ -182,21 +182,3 @@ private[ann] object CNNModel {
     index
   }
 }
-
-/**
- * Simple updater
- */
-private[ann] class CNNUpdater extends Updater {
-
-  override def compute(
-      weightsOld: Vector,
-      gradient: Vector,
-      stepSize: Double,
-      iter: Int,
-      regParam: Double): (Vector, Double) = {
-    val thisIterStepSize = stepSize
-    val brzWeights: BV[Double] = weightsOld.toBreeze.toDenseVector
-    axpy(thisIterStepSize, gradient.toBreeze, brzWeights)
-    (Vectors.fromBreeze(brzWeights), 0)
-  }
-}
