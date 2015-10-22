@@ -28,7 +28,7 @@ object CNNDriver {
   def main(args: Array[String]) {
 
     val myLayers = new Array[Layer](8)
-    myLayers(0) = new ConvolutionalLayer(1, 6, kernelSize = new MapSize(5, 5), inputSize = new MapSize(28, 28))
+    myLayers(0) = new ConvolutionalLayer(1, 6, kernelSize = new MapSize(5, 5), inputMapSize = new MapSize(28, 28))
     myLayers(1) = new FunctionalLayer(new SigmoidFunction())
     myLayers(2) = new MeanPoolingLayer(new MapSize(2, 2), new MapSize(24, 24))
     myLayers(3) = new ConvolutionalLayer(6, 12, new MapSize(5, 5), new MapSize(12, 12))
@@ -51,31 +51,27 @@ object CNNDriver {
       (Vectors.fromBreeze(in.toDenseVector), Vectors.dense(target))
     }).cache()
 
-    val start = System.nanoTime()
     val feedForwardTrainer = new FeedForwardTrainer(topology, 784, 12)
 
     feedForwardTrainer.setStackSize(1) // CNN does not benefit from the stacked data
+//    .LBFGSOptimizer.setNumIterations(20)
       .SGDOptimizer
       .setMiniBatchFraction(0.001)
       .setConvergenceTol(0)
       .setNumIterations(1000)
       .setUpdater(new CNNUpdater)
 
-    for(iter <- 1 to 10){
+    for(iter <- 1 to 100){
+      val start = System.nanoTime()
       val mlpModel = feedForwardTrainer.train(data)
       feedForwardTrainer.setWeights(mlpModel.weights())
       println(s"Training time $iter: " + (System.nanoTime() - start) / 1e9)
-      println(mlpModel.weights().toArray.take(10).mkString(", "))
+
       // predict
-      val right = data.filter(v => {
-        val pre = mlpModel.predict(v._1)
-        pre.argmax == v._2.argmax
-      }).count()
+      val right = data.filter(v => mlpModel.predict(v._1).argmax == v._2.argmax).count()
       val precision = right.toDouble / data.count()
       println(s"right: $right, count: ${data.count()}, precision: $precision")
     }
-
-    println("Total training time: " + (System.nanoTime() - start) / 1e9)
   }
 
   def Vector2BDM(record: Vector): BDM[Double] = {

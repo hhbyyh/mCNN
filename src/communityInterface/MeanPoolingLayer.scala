@@ -78,14 +78,14 @@ private[ann] class MeanPoolingLayerModel private(poolingSize: MapSize,
 }
 
 /**
- * Fabric for Affine layer models
+ * Fabric for mean pooling layer models
  */
 private[ann] object MeanPoolingLayerModel {
 
   /**
-   * Creates a model of Affine layer
+   * Creates a model of Mean Pooling layer
    * @param layer layer properties
-   * @return model of Affine layer
+   * @return model of Mean Pooling layer
    */
   def apply(layer: MeanPoolingLayer, inputSize: MapSize): MeanPoolingLayerModel = {
     new MeanPoolingLayerModel(layer.poolingSize, inputSize: MapSize)

@@ -23,12 +23,14 @@ import org.apache.spark.mllib.linalg.{DenseVector, Vector}
  * Layer properties of Convolutional Layer
  * @param numInMap number of inputs
  * @param numOutMap number of outputs
+ * @param kernelSize kernelSize of format x * y
+ * @param inputMapSize size of each input feature map.
  */
 private[ann] class ConvolutionalLayer(
     val numInMap: Int,
     val numOutMap: Int,
     val kernelSize: MapSize,
-    val inputSize: MapSize) extends Layer {
+    val inputMapSize: MapSize) extends Layer {
 
   override def getInstance(weights: Vector, position: Int): LayerModel = {
     ConvolutionalLayerModel(this, weights, position)
@@ -187,8 +189,8 @@ private[ann] object ConvolutionalLayerModel {
       layer.numInMap,
       layer.numOutMap,
       layer.kernelSize,
-      layer.inputSize)
-    new ConvolutionalLayerModel(layer.numInMap, layer.numOutMap, w, b, layer.inputSize)
+      layer.inputMapSize)
+    new ConvolutionalLayerModel(layer.numInMap, layer.numOutMap, w, b, layer.inputMapSize)
   }
 
   /**
@@ -204,9 +206,12 @@ private[ann] object ConvolutionalLayerModel {
       for (j <- 0 until layer.numOutMap)
         kernel(i)(j) = (BDM.rand[Double](layer.kernelSize.x, layer.kernelSize.y) - 0.05) / 10.0
 
-    new ConvolutionalLayerModel(layer.numInMap, layer.numOutMap, kernel, bias, layer.inputSize)
+    new ConvolutionalLayerModel(layer.numInMap, layer.numOutMap, kernel, bias, layer.inputMapSize)
   }
 
+  /**
+   * roll kernels and bias into the array format for [[org.apache.spark.mllib.optimization]]
+   */
   private[ann] def roll(kernels: Array[Array[BDM[Double]]], bias: Array[Double]): Array[Double] = {
     val rows = kernels.length
     val cols = kernels(0).length
