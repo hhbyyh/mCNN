@@ -5,7 +5,7 @@ sum => Bsum}
 import org.apache.spark.mllib.linalg.{Vectors, Vector}
 import org.apache.spark.mllib.optimization.Updater
 
-private[ann] class CNNUpdater extends Updater {
+private[ann] class CNNUpdater(alpha: Double) extends Updater {
 
   override def compute(
       weightsOld: Vector,
@@ -15,7 +15,7 @@ private[ann] class CNNUpdater extends Updater {
       regParam: Double): (Vector, Double) = {
     val thisIterStepSize = stepSize
     val brzWeights: BV[Double] = weightsOld.toBreeze.toDenseVector
-    Baxpy(-thisIterStepSize, gradient.toBreeze * 0.85, brzWeights)
+    Baxpy(-thisIterStepSize, gradient.toBreeze * alpha, brzWeights)
     (Vectors.fromBreeze(brzWeights), 0)
   }
 }

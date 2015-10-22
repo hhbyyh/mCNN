@@ -61,7 +61,8 @@ private[ann] class MeanPoolingLayerModel private(poolingSize: MapSize,
     val scale: MapSize = this.poolingSize
     while (m < mapNum) {
       val nextError: BDM[Double] = nextDeltaMaps(m)
-      val outMatrix = MeanPoolingLayerModel.kronecker(nextError, scale)
+      val ones = BDM.ones[Double](scale.x, scale.y)
+      val outMatrix = kron(nextError, ones)
       errors(m) = outMatrix
       m += 1
     }
@@ -128,10 +129,5 @@ private[ann] object MeanPoolingLayerModel {
       i += 1
     }
     outMatrix
-  }
-
-  private[ann] def kronecker(matrix: BDM[Double], scale: MapSize): BDM[Double] = {
-    val ones = BDM.ones[Double](scale.x, scale.y)
-    kron(matrix, ones)
   }
 }

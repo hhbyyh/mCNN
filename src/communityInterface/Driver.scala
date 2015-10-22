@@ -19,7 +19,6 @@ package org.apache.spark.ml.ann
 
 import org.apache.log4j.{Logger, Level}
 import breeze.linalg.{DenseMatrix => BDM}
-import org.apache.spark.ml.ann.FunctionalLayer
 import org.apache.spark.mllib.linalg.{Vectors, Vector}
 import org.apache.spark.{SparkContext, SparkConf}
 
@@ -59,12 +58,13 @@ object CNNDriver {
       .setMiniBatchFraction(0.001)
       .setConvergenceTol(0)
       .setNumIterations(1000)
-      .setUpdater(new CNNUpdater)
+      .setUpdater(new CNNUpdater(0.85))
 
-    for(iter <- 1 to 100){
+    for(iter <- 1 to 1000){
       val start = System.nanoTime()
       val mlpModel = feedForwardTrainer.train(data)
       feedForwardTrainer.setWeights(mlpModel.weights())
+
       println(s"Training time $iter: " + (System.nanoTime() - start) / 1e9)
 
       // predict
