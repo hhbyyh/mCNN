@@ -17,7 +17,7 @@
 package org.apache.spark.ml.ann
 
 import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV, fliplr, flipud, sum}
-import org.apache.spark.mllib.linalg.{DenseVector, Vector}
+import org.apache.spark.mllib.linalg.{Vectors, DenseVector, Vector}
 
 /**
  * Layer properties of Convolutional Layer
@@ -66,69 +66,83 @@ private[ann] class ConvolutionalLayerModel private(
   override val size = kernelSize.x * kernelSize.y * inMapNum * outMapNum + bias.length
 
   /**
-    * @param data contains only one column with all the data for one sample, so its size is
-    *             inMapNum * inputMapSize. CNN does not benefit from stacked input
+    * @param data each column contains all the data for one sample, with size of
+    *             inMapNum * inputMapSize.
     */
   override def eval(data: BDM[Double]): BDM[Double] = {
     require(data.rows == this.inMapNum * inputMapSize.x * inputMapSize.y)
-    require(data.cols == 1)
     // local copy
     val inMapNum = this.inMapNum
     val outMapNum = this.outMapNum
     val kernels = this.kernels
     val bias = this.bias
 
-    val inputMaps = FeatureMapRolling.extractMaps(data, inputMapSize)
-    val output = new Array[BDM[Double]](this.outMapNum)
-    var j = 0
-    while (j < outMapNum) {
-      var sum: BDM[Double] = ConvolutionalLayerModel.convValid(inputMaps(0), kernels(0)(j))
-      var i = 1
-      while (i < inMapNum) {
-        sum += ConvolutionalLayerModel.convValid(inputMaps(i), kernels(i)(j))
-        i += 1
+    val batchOutput = new BDM[Double](outputSize.x * outputSize.y * outMapNum, data.cols)
+    (0 until data.cols).foreach{ col =>
+      val inputMaps = FeatureMapRolling.extractMaps(data(::, col), inputMapSize)
+      val output = new Array[BDM[Double]](this.outMapNum)
+      var j = 0
+      while (j < outMapNum) {
+        var sum: BDM[Double] = ConvolutionalLayerModel.convValid(inputMaps(0), kernels(0)(j))
+        var i = 1
+        while (i < inMapNum) {
+          sum += ConvolutionalLayerModel.convValid(inputMaps(i), kernels(i)(j))
+          i += 1
+        }
+        output(j) = sum + bias(j)
+        j += 1
       }
-      output(j) = sum + bias(j)
-      j += 1
+      // reorganize feature maps to a single column in a dense matrix.
+      batchOutput(::, col) := FeatureMapRolling.mergeMaps(output)
     }
-    // reorganize feature maps to a single column in a dense matrix.
-    val outBDM = FeatureMapRolling.mergeMaps(output)
-    outBDM
+    batchOutput
   }
 
-  override def prevDelta(nextDelta: BDM[Double], input: BDM[Double]): BDM[Double] = {
-    require(nextDelta.cols == 1)
+  override def prevDelta(nextDelta: BDM[Double], output: BDM[Double]): BDM[Double] = {
+
     // local copy
     val inMapNum = this.inMapNum
     val outMapNum = this.outMapNum
     val kernels = this.kernels
 
-    val nextDeltaMaps = FeatureMapRolling.extractMaps(nextDelta, outputSize)
-    val deltas = new Array[BDM[Double]](inMapNum)
-    var i = 0
-    while (i < inMapNum) {
-      // rotate kernel by 180 degrees and get full convolution
-      var sum: BDM[Double] = ConvolutionalLayerModel.convFull(nextDeltaMaps(0),
-        flipud(fliplr(kernels(i)(0))))
-      var j = 1
-      while (j < outMapNum) {
-        sum += ConvolutionalLayerModel.convFull(nextDeltaMaps(j), flipud(fliplr(kernels(i)(j))))
-        j += 1
+    val batchDelta = new BDM[Double](inputMapSize.x * inputMapSize.y * inMapNum, output.cols)
+    (0 until output.cols).foreach{ col =>
+      val nextDeltaMaps = FeatureMapRolling.extractMaps(nextDelta(::, col), outputSize)
+      val deltas = new Array[BDM[Double]](inMapNum)
+      var i = 0
+      while (i < inMapNum) {
+        // rotate kernel by 180 degrees and get full convolution
+        var sum: BDM[Double] = ConvolutionalLayerModel.convFull(nextDeltaMaps(0),
+          flipud(fliplr(kernels(i)(0))))
+        var j = 1
+        while (j < outMapNum) {
+          sum += ConvolutionalLayerModel.convFull(nextDeltaMaps(j), flipud(fliplr(kernels(i)(j))))
+          j += 1
+        }
+        deltas(i) = sum
+        i += 1
       }
-      deltas(i) = sum
-      i += 1
+      // reorganize delta maps to a single column in a dense matrix.
+      batchDelta(::, col) := FeatureMapRolling.mergeMaps(deltas)
     }
-    // reorganize delta maps to a single column in a dense matrix.
-    FeatureMapRolling.mergeMaps(deltas)
+
+    batchDelta
   }
 
   override def grad(delta: BDM[Double], input: BDM[Double]): Array[Double] = {
-    val inputMaps = FeatureMapRolling.extractMaps(input, inputMapSize)
-    val deltaMaps = FeatureMapRolling.extractMaps(delta, outputSize)
 
-    val kernelGradient = getKernelsGradient(inputMaps, deltaMaps)
-    val biasGradient = getBiasGradient(deltaMaps)
-    ConvolutionalLayerModel.roll(kernelGradient, biasGradient)
+    var batchGradient = new BDV[Double](this.size)
+    (0 until input.cols).foreach{ col =>
+      val inputMaps = FeatureMapRolling.extractMaps(input(::, col), inputMapSize)
+      val deltaMaps = FeatureMapRolling.extractMaps(delta(::, col), outputSize)
+
+      val kernelGradient = getKernelsGradient(inputMaps, deltaMaps)
+      val biasGradient = getBiasGradient(deltaMaps)
+      val single = ConvolutionalLayerModel.roll(kernelGradient, biasGradient)
+      batchGradient = batchGradient + single
+    }
+
+    (batchGradient / input.cols.toDouble).toArray
   }
 
   /**
@@ -168,7 +182,7 @@ private[ann] class ConvolutionalLayerModel private(
     gradient
   }
 
-  override def weights(): Vector = new DenseVector(ConvolutionalLayerModel.roll(kernels, bias))
+  override def weights(): Vector = Vectors.fromBreeze(ConvolutionalLayerModel.roll(kernels, bias))
 
 }
 
@@ -212,7 +226,7 @@ private[ann] object ConvolutionalLayerModel {
   /**
    * roll kernels and bias into the array format for [[org.apache.spark.mllib.optimization]]
    */
-  private[ann] def roll(kernels: Array[Array[BDM[Double]]], bias: Array[Double]): Array[Double] = {
+  private[ann] def roll(kernels: Array[Array[BDM[Double]]], bias: Array[Double]): BDV[Double] = {
     val rows = kernels.length
     val cols = kernels(0).length
     val m = kernels(0)(0).rows * kernels(0)(0).cols
@@ -229,7 +243,7 @@ private[ann] object ConvolutionalLayerModel {
       i += 1
     }
     System.arraycopy(bias, 0, result, offset, bias.length)
-    result
+    new BDV(result)
   }
 
   /**

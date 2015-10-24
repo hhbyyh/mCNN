@@ -18,7 +18,7 @@
 package org.apache.spark.ml.ann
 
 import java.io.Serializable
-import breeze.linalg.{DenseMatrix => BDM}
+import breeze.linalg.{DenseMatrix => BDM, DenseVector => BDV}
 
 /**
  * Utility class for managing feature map size. x and y can be different
@@ -61,10 +61,8 @@ class MapSize(var x: Int, var y: Int) extends Serializable {
  * The conversion is necessary for compatibility with current Layer interface.
  */
 object FeatureMapRolling{
-  private[ann] def extractMaps(bdm: BDM[Double], size: MapSize): Array[BDM[Double]] = {
-    require(bdm.cols == 1)
-
-    val v = bdm.data
+  private[ann] def extractMaps(bdv: BDV[Double], size: MapSize): Array[BDM[Double]] = {
+    val v = bdv.toArray
     val mapSize = size.x * size.y
     val mapNum = v.length / mapSize
     val maps = new Array[BDM[Double]](mapNum)
@@ -78,7 +76,7 @@ object FeatureMapRolling{
     maps
   }
 
-  private[ann] def mergeMaps(data: Array[BDM[Double]]): BDM[Double] = {
+  private[ann] def mergeMaps(data: Array[BDM[Double]]): BDV[Double] = {
     require(data.length > 0)
     val num = data.length
     val size = data(0).size
@@ -90,7 +88,7 @@ object FeatureMapRolling{
       offset += size
       i += 1
     }
-    val outBDM = new BDM[Double](num * size, 1, arr)
+    val outBDM = new BDV[Double](arr)
     outBDM
   }
 }

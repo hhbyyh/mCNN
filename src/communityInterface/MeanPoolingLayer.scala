@@ -39,35 +39,46 @@ private[ann] class MeanPoolingLayerModel private(poolingSize: MapSize,
   override val size = 0
 
   override def eval(data: BDM[Double]): BDM[Double] = {
-    val inputMaps = FeatureMapRolling.extractMaps(data, inputSize)
-    val inputMapNum = inputMaps.length
-    val scaleSize: MapSize = this.poolingSize
+    val inMapNum = data.rows / (inputSize.x * inputSize.y)
+    val batchOutput = new BDM[Double](outputSize.x * outputSize.y * inMapNum , data.cols)
+    (0 until data.cols).foreach { col =>
+      val inputMaps = FeatureMapRolling.extractMaps(data(::, col), inputSize)
+      val inputMapNum = inputMaps.length
+      val scaleSize: MapSize = this.poolingSize
 
-    val output = new Array[BDM[Double]](inputMapNum)
-    var i = 0
-    while (i < inputMapNum) {
-      val inputMap: BDM[Double] = inputMaps(i)
-      output(i) = MeanPoolingLayerModel.avgPooling(inputMap, scaleSize)
-      i += 1
+      val output = new Array[BDM[Double]](inputMapNum)
+      var i = 0
+      while (i < inputMapNum) {
+        val inputMap: BDM[Double] = inputMaps(i)
+        output(i) = MeanPoolingLayerModel.avgPooling(inputMap, scaleSize)
+        i += 1
+      }
+      batchOutput(::, col) := FeatureMapRolling.mergeMaps(output)
     }
-    FeatureMapRolling.mergeMaps(output)
+    batchOutput
   }
 
-  override def prevDelta(nextDelta: BDM[Double], input: BDM[Double]): BDM[Double] = {
-    val nextDeltaMaps = FeatureMapRolling.extractMaps(nextDelta, outputSize)
-    val mapNum: Int = nextDeltaMaps.length
-    val errors = new Array[BDM[Double]](mapNum)
-    var m: Int = 0
-    val scale: MapSize = this.poolingSize
-    while (m < mapNum) {
-      val nextError: BDM[Double] = nextDeltaMaps(m)
-      val ones = BDM.ones[Double](scale.x, scale.y)
-      val outMatrix = kron(nextError, ones)
-      errors(m) = outMatrix
-      m += 1
-    }
+  override def prevDelta(nextDelta: BDM[Double], output: BDM[Double]): BDM[Double] = {
 
-    FeatureMapRolling.mergeMaps(errors)
+    val inMapNum = output.rows / (outputSize.x * outputSize.y)
+    val batchDelta = new BDM[Double](inputSize.x * inputSize.y * inMapNum, output.cols)
+    (0 until output.cols).foreach { col =>
+      val nextDeltaMaps = FeatureMapRolling.extractMaps(nextDelta(::, col), outputSize)
+      val mapNum: Int = nextDeltaMaps.length
+      val errors = new Array[BDM[Double]](mapNum)
+      var m: Int = 0
+      val scale: MapSize = this.poolingSize
+      while (m < mapNum) {
+        val nextError: BDM[Double] = nextDeltaMaps(m)
+        val ones = BDM.ones[Double](scale.x, scale.y)
+        val outMatrix = kron(nextError, ones)
+        errors(m) = outMatrix
+        m += 1
+      }
+
+      batchDelta(::, col) := FeatureMapRolling.mergeMaps(errors)
+    }
+    batchDelta
   }
 
   override def grad(delta: BDM[Double], input: BDM[Double]): Array[Double] = {

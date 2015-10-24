@@ -52,10 +52,10 @@ object CNNDriver {
 
     val feedForwardTrainer = new FeedForwardTrainer(topology, 784, 12)
 
-    feedForwardTrainer.setStackSize(1) // CNN does not benefit from the stacked data
+    feedForwardTrainer.setStackSize(4) // CNN does not benefit from the stacked data
 //    .LBFGSOptimizer.setNumIterations(20)
       .SGDOptimizer
-      .setMiniBatchFraction(0.001)
+      .setMiniBatchFraction(0.002)
       .setConvergenceTol(0)
       .setNumIterations(1000)
       .setUpdater(new CNNUpdater(0.85))
