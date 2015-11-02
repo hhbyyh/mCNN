@@ -9,7 +9,7 @@ object MnistCSVDriver {
 
   def main(args: Array[String]) {
     val topology = new CNNTopology
-    topology.addLayer(CNNLayer.buildInputLayer(new Scale(28, 28)))
+    topology.addLayer(CNNLayer.buildConvolutionLayer(new Scale(28, 28)))
     topology.addLayer(CNNLayer.buildConvLayer(6, new Scale(5, 5)))
     topology.addLayer(CNNLayer.buildSampLayer(new Scale(2, 2)))
     topology.addLayer(CNNLayer.buildConvLayer(12, new Scale(5, 5)))
